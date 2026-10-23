@@ -64,8 +64,10 @@ fs.writeFileSync(path.join(out, '使用说明.txt'), [
   '拖文件：把 PDF / DOCX / XLSX / XLS / TXT / MD 拖到悬浮块或日历上，等待预览，确认后写入任务。',
   '文件/文字解析只使用 AI；没有配置 AI 时会提示先配置，不再本地降级。',
   '',
-  '数据位置：',
-  '%APPDATA%\\TodayBlock\\',
+  '数据位置（便携）：',
+  'TodayBlock\\data\\',
+  '复制整个 TodayBlock 文件夹到另一台电脑即可带走数据。',
+  '如果程序目录不可写，会自动改用 %APPDATA%\\TodayBlock\\。',
   '',
   '首次启动带示例任务，可在 设置 → 数据 → 清除示例 删除。',
   ''

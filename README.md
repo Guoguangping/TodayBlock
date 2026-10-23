@@ -116,7 +116,13 @@ node_modules/electron/dist/version -> 45.0.0
 
 **没有配置 key 时**：文件拖入和文字解析会提示先配置 AI，不会生成本地规则任务；快速添加和手动任务仍然可用。
 
-**隐私**：首次使用 AI 前请确认文件内容是否可以发送给对应服务。API Key 使用 Windows `safeStorage` 加密后保存在本机；不会写进任务数据。任务、附件、备份都在：
+**隐私**：首次使用 AI 前请确认文件内容是否可以发送给对应服务。API Key 使用 Windows `safeStorage` 加密后保存在本机；不会写进任务数据。任务、附件、备份默认在：
+
+```text
+TodayBlock\data\
+```
+
+程序目录只读或开发模式时使用：
 
 ```text
 %APPDATA%\TodayBlock\
@@ -173,10 +179,30 @@ pnpm package
 
 ## 数据
 
-- 主数据：`%APPDATA%\TodayBlock\data.json`
-- 附件：`%APPDATA%\TodayBlock\attachments\`
-- 备份：`%APPDATA%\TodayBlock\backups\`
-- 设置：同一个 `data.json`，API Key 单独加密字段
+打包版默认使用**便携数据目录**：
+
+```text
+TodayBlock\
+  TodayBlock.exe
+  data\
+    data.json
+    attachments\
+    backups\
+```
+
+复制整个 `TodayBlock` 文件夹到另一台电脑，任务、项目、附件和备份会一起带走。
+
+首次从旧版本升级时，如果程序目录下没有 `data`，会自动从 `%APPDATA%\TodayBlock` 复制 `data.json`、`attachments`、`backups`。
+
+如果程序放在 `Program Files` 等只读目录，会自动退回：
+
+```text
+%APPDATA%\TodayBlock\
+```
+
+开发模式仍使用 `%APPDATA%\TodayBlock`，避免污染源码目录。
+
+API Key 使用 Windows `safeStorage` 加密，换电脑后通常无法解密，需要在 AI 设置里重新输入一次；任务数据不受影响。附件路径会在启动时尝试按 `attachments` 中的同名文件修复。
 
 不要将正在使用的 `data.json` 直接放进 OneDrive 等实时同步目录，可能损坏。需要同步时用「导出备份」。
 

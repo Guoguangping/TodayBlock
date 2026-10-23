@@ -38,6 +38,8 @@ const state = {
   today: localKey(new Date()),
   tasks: [],
   settings: null,
+  dataDir: '',
+  dataMode: '',
   counts: { today: 0, overdue: 0, doneToday: 0, totalToday: 0 },
   expanded: false,
   selectedDate: localKey(new Date()),
@@ -229,6 +231,8 @@ function applyState(snapshot) {
   state.today = snapshot.today || state.today;
   state.tasks = Array.isArray(snapshot.tasks) ? snapshot.tasks : [];
   state.settings = snapshot.settings || state.settings;
+  state.dataDir = snapshot.dataDir || state.dataDir;
+  state.dataMode = snapshot.dataMode || state.dataMode;
   state.counts = snapshot.counts || state.counts;
   state.expanded = VIEW === 'panel';
   if (!state.selectedDate) state.selectedDate = state.today;
@@ -1257,7 +1261,11 @@ function settingsHtml() {
           <button class="btn" type="button" id="window-reset">重置位置</button>
           <button class="btn danger" type="button" id="data-clear-demo">清除示例</button>
         </div>
-        <p class="settings-note">每天自动保留最近 7 份备份。不要将正在使用的 data.json 直接放进 OneDrive 同步。</p>
+        <p class="settings-note">${state.dataMode === 'portable'
+          ? '便携模式：数据保存在程序目录的 data/ 中，复制整个程序文件夹到另一台电脑即可带走任务。'
+          : state.dataMode === 'appdata'
+            ? '程序目录不可写，数据暂时保存在 AppData。把程序放到可写目录即可启用便携数据。'
+            : '每天自动保留最近 7 份备份。不要将正在使用的 data.json 直接放进 OneDrive 同步。'}</p>
       </div>
     `,
     footer: `

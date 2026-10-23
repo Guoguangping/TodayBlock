@@ -47,15 +47,70 @@ app.commandLine.appendSwitch('disable-dev-shm-usage');
 
 app.setName('TodayBlock');
 if (process.platform === 'win32') app.setAppUserModelId('com.todayblock.desktop');
-app.setPath('userData', path.join(
-  app.getPath('appData'),
-  IS_SMOKE ? `TodayBlock-smoke-${process.pid}` : 'TodayBlock'
-));
-if (IS_SMOKE) {
-  fs.rmSync(app.getPath('userData'), { recursive: true, force: true });
+
+function canWriteDir(dir) {
+  try {
+    fs.mkdirSync(dir, { recursive: true });
+    const probe = path.join(dir, '.write-test');
+    fs.writeFileSync(probe, 'ok', 'utf8');
+    fs.rmSync(probe, { force: true });
+    return true;
+  } catch {
+    return false;
+  }
 }
 
-const DATA_DIR = app.getPath('userData');
+function migrateLegacyData(targetDir, legacyDir) {
+  for (const name of ['data.json', 'attachments', 'backups']) {
+    const source = path.join(legacyDir, name);
+    const target = path.join(targetDir, name);
+    if (!fs.existsSync(source) || fs.existsSync(target)) continue;
+    try {
+      fs.cpSync(source, target, { recursive: true });
+    } catch (error) {
+      console.error(`Could not migrate ${name}:`, error.message);
+    }
+  }
+}
+
+function resolveDataDir() {
+  const appDataDir = app.getPath('appData');
+  if (IS_SMOKE) {
+    const dir = path.join(appDataDir, `TodayBlock-smoke-${process.pid}`);
+    fs.rmSync(dir, { recursive: true, force: true });
+    return { dir, mode: 'smoke' };
+  }
+  const legacyDir = path.join(appDataDir, 'TodayBlock');
+  if (!app.isPackaged) {
+    return { dir: legacyDir, mode: 'development' };
+  }
+
+  // Keep the portable app self-contained: TodayBlock.exe + data/ can be
+  // copied to another Windows PC together. Fall back to AppData when the
+  // application directory is read-only (for example Program Files).
+  const portableDir = path.join(path.dirname(process.execPath), 'data');
+  if (canWriteDir(portableDir)) {
+    migrateLegacyData(portableDir, legacyDir);
+    return { dir: portableDir, mode: 'portable' };
+  }
+  return { dir: legacyDir, mode: 'appdata' };
+}
+
+const dataLocation = resolveDataDir();
+const DATA_MODE = dataLocation.mode;
+app.setPath('userData', dataLocation.dir);
+if (DATA_MODE === 'portable') {
+  // Keep Chromium caches out of the portable data folder. Only data.json,
+  // attachments, backups and the small startup log belong there.
+  const sessionDir = path.join(app.getPath('appData'), 'TodayBlock-session');
+  try {
+    fs.mkdirSync(sessionDir, { recursive: true });
+    app.setPath('sessionData', sessionDir);
+  } catch {
+    /* Electron will fall back to userData if this path is unavailable. */
+  }
+}
+const DATA_DIR = dataLocation.dir;
 const DATA_FILE = path.join(DATA_DIR, 'data.json');
 const ATTACHMENTS_DIR = path.join(DATA_DIR, 'attachments');
 const BACKUPS_DIR = path.join(DATA_DIR, 'backups');
@@ -75,7 +130,7 @@ function bootLog(message) {
   }
 }
 
-bootLog(`start argv=${JSON.stringify(process.argv)} cwd=${process.cwd()} packaged=${app.isPackaged}`);
+bootLog(`start argv=${JSON.stringify(process.argv)} cwd=${process.cwd()} packaged=${app.isPackaged} dataMode=${DATA_MODE} dataDir=${DATA_DIR}`);
 
 let win = null;
 let bubbleWin = null;
@@ -398,6 +453,28 @@ function seedDemo() {
   ];
 }
 
+function repairAttachmentPaths() {
+  let changed = false;
+  for (const task of store.tasks) {
+    const value = String(task.sourcePath || '').trim();
+    if (!value) continue;
+    const localCopy = path.join(ATTACHMENTS_DIR, path.basename(value));
+    if (fs.existsSync(localCopy)) {
+      if (task.sourcePath !== localCopy) {
+        task.sourcePath = localCopy;
+        changed = true;
+      }
+      continue;
+    }
+    const direct = path.isAbsolute(value) ? value : path.join(DATA_DIR, value);
+    if (fs.existsSync(direct) && task.sourcePath !== direct) {
+      task.sourcePath = direct;
+      changed = true;
+    }
+  }
+  if (changed) saveStore();
+}
+
 function loadStore() {
   fs.mkdirSync(DATA_DIR, { recursive: true });
   fs.mkdirSync(ATTACHMENTS_DIR, { recursive: true });
@@ -429,6 +506,8 @@ function loadStore() {
     store.settings.demoSeeded = true;
     saveStore();
   }
+
+  repairAttachmentPaths();
 
   if (store.settings.anchor) {
     lastAnchor = clampAnchor(store.settings.anchor);
@@ -510,7 +589,8 @@ function getSnapshot() {
     },
     expanded,
     appVersion: app.getVersion(),
-    dataDir: DATA_DIR
+    dataDir: DATA_DIR,
+    dataMode: DATA_MODE
   };
 }
 
