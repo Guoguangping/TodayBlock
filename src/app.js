@@ -622,7 +622,9 @@ function overviewTableHtml(tasks) {
       <table class="ov-table">
         <thead>
           <tr>
-            <th class="ov-cell-check"></th>
+            <th class="ov-cell-check">
+              <label class="ov-select-all"><input id="ov-select-all" class="ov-checkbox" type="checkbox" aria-label="全选当前筛选结果">全选</label>
+            </th>
             <th>任务</th>
             <th>项目</th>
             <th>状态</th>
@@ -679,6 +681,12 @@ function renderOverview() {
     board.classList.toggle('is-table', state.ov.mode === 'table');
     if (state.ov.mode === 'table') {
       board.innerHTML = overviewTableHtml(filtered);
+      const selectAll = $('#ov-select-all');
+      if (selectAll) {
+        const selectedCount = filtered.filter((task) => state.ov.selected.has(task.id)).length;
+        selectAll.checked = filtered.length > 0 && selectedCount === filtered.length;
+        selectAll.indeterminate = selectedCount > 0 && selectedCount < filtered.length;
+      }
     } else {
       const lanes = [
         { key: 'todo', label: '待处理' },
@@ -836,6 +844,18 @@ function bindOverview() {
 
   const board = $('#ov-board');
   board?.addEventListener('click', async (event) => {
+    if (event.target.closest('.ov-select-all')) {
+      const visible = overviewFilteredTasks();
+      if (!visible.length) return;
+      const allSelected = visible.every((task) => state.ov.selected.has(task.id));
+      for (const task of visible) {
+        if (allSelected) state.ov.selected.delete(task.id);
+        else state.ov.selected.add(task.id);
+      }
+      renderOverview();
+      return;
+    }
+
     const card = event.target.closest('.ov-card, .ov-table-row');
     if (!card) return;
     const id = card.dataset.taskId;

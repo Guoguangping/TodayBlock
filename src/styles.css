@@ -1842,7 +1842,7 @@ html[data-view="overview"] .overview {
 
 .ov-header {
   display: flex;
-  align-items: flex-end;
+  align-items: flex-start;
   justify-content: space-between;
   gap: 18px;
   flex: 0 0 auto;
@@ -2659,4 +2659,23 @@ html[data-view="overview"] .overview {
 
 .modal-card.trash-modal {
   width: min(760px, calc(100% - 40px));
+}
+
+.ov-select-all {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  color: var(--muted);
+  font-size: 8.5px;
+  font-weight: 500;
+  white-space: nowrap;
+  cursor: pointer;
+}
+
+.ov-table th:nth-child(1) {
+  width: 64px;
+}
+
+.ov-table .ov-cell-check {
+  width: 64px;
 }
