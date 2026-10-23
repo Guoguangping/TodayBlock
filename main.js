@@ -381,22 +381,25 @@ function defaultAnchor() {
   };
 }
 
-function clampWindowPosition(position, size = COLLAPSED) {
+function clampWindowPosition(position, size = COLLAPSED, padding = 8) {
   const point = position && Number.isFinite(position.x) && Number.isFinite(position.y)
     ? position
     : defaultAnchor();
   const width = Number(size?.width) || COLLAPSED.width;
   const height = Number(size?.height) || COLLAPSED.height;
+  const margin = Number.isFinite(padding) ? padding : 8;
   const display = displayForPoint({ x: point.x + 1, y: point.y + 1 });
   const wa = display.workArea;
   return {
-    x: Math.round(clamp(point.x, wa.x + 8, wa.x + wa.width - width - 8)),
-    y: Math.round(clamp(point.y, wa.y + 8, wa.y + wa.height - height - 8))
+    x: Math.round(clamp(point.x, wa.x + margin, wa.x + wa.width - width - margin)),
+    y: Math.round(clamp(point.y, wa.y + margin, wa.y + wa.height - height - margin))
   };
 }
 
 function clampAnchor(anchor) {
-  return clampWindowPosition(anchor, COLLAPSED);
+  // The face already has an 8px transparent ring for its halo. Do not add a
+  // second safety margin when the user drags the bubble to a screen edge.
+  return clampWindowPosition(anchor, COLLAPSED, 0);
 }
 
 /* ------------------------------------------------------------------ */
@@ -2447,7 +2450,7 @@ function registerIpc() {
     const next = clampWindowPosition({
       x: dragState.bounds.x + cursor.x - dragState.cursor.x,
       y: dragState.bounds.y + cursor.y - dragState.cursor.y
-    }, dragState.bounds);
+    }, dragState.bounds, dragState.isPanel ? 8 : 0);
     if (!Number.isFinite(next.x) || !Number.isFinite(next.y)) return;
 
     try {
