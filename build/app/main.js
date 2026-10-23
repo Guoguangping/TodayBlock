@@ -27,6 +27,7 @@ const IS_SMOKE_AI = !IS_PACKAGED && process.argv.includes('--smoke-ai');
 const IS_SMOKE = !IS_PACKAGED && (process.argv.includes('--smoke') || IS_SMOKE_AI);
 const APP_DIR = __dirname;
 const ASSETS_DIR = path.join(APP_DIR, 'assets');
+const APP_ICON_PATH = path.join(ASSETS_DIR, process.platform === 'win32' ? 'icon.ico' : 'icon.png');
 let UI_SCALE = 1;
 // 收起窗口比 72 方块每边多 8px，外发光留在透明边里
 let COLLAPSED = { width: 88, height: 88 };
@@ -636,7 +637,7 @@ function browserWindowOptions(bounds) {
     alwaysOnTop: Boolean(store.settings.alwaysOnTop),
     hasShadow: false,
     show: false,
-    icon: path.join(ASSETS_DIR, 'icon.png'),
+    icon: APP_ICON_PATH,
     webPreferences: {
       preload: path.join(APP_DIR, 'preload.js'),
       contextIsolation: true,
@@ -851,7 +852,7 @@ function createOverviewWindow() {
     alwaysOnTop: false,
     backgroundColor: '#0d1117',
     title: 'TodayBlock · 全览',
-    icon: path.join(ASSETS_DIR, 'icon.png'),
+    icon: APP_ICON_PATH,
     autoHideMenuBar: true,
     webPreferences: {
       preload: path.join(APP_DIR, 'preload.js'),
@@ -862,6 +863,24 @@ function createOverviewWindow() {
     }
   });
   overviewWin.setMenuBarVisibility(false);
+  try {
+    overviewWin.setIcon(nativeImage.createFromPath(APP_ICON_PATH));
+  } catch (error) {
+    safeError('Overview icon failed:', error.message);
+  }
+  if (process.platform === 'win32') {
+    try {
+      overviewWin.setAppDetails({
+        appId: 'com.todayblock.desktop',
+        appIconPath: APP_ICON_PATH,
+        appIconIndex: 0,
+        relaunchCommand: process.execPath,
+        relaunchDisplayName: 'TodayBlock'
+      });
+    } catch (error) {
+      safeError('Overview app details failed:', error.message);
+    }
+  }
   if (UI_SCALE !== 1) overviewWin.webContents.setZoomFactor(UI_SCALE);
   overviewWin.loadFile(path.join(APP_DIR, 'src', 'index.html'), { query: { view: 'overview' } })
     .catch((error) => bootLog(`overview loadFile failed ${error.message}`));
