@@ -52,23 +52,23 @@ assert.equal(
 );
 
 const right = stripBounds(full, 'right', 1);
-assert.deepEqual(right, { x: 176, y: 88, width: 12, height: 72 });
+assert.deepEqual(right, { x: 164, y: 88, width: 24, height: 72 });
 assert.equal(right.x + right.width, full.x + full.width, '右侧细条外沿对齐原窗口');
 
 const left = stripBounds(full, 'left', 1);
 assert.equal(left.x, full.x);
-assert.equal(left.width, 12);
+assert.equal(left.width, 24);
 
 const top = stripBounds(full, 'top', 1);
 assert.equal(top.y, full.y);
-assert.equal(top.height, 12);
+assert.equal(top.height, 24);
 
 assert.deepEqual(anchorFromStrip(right, { width: 88, height: 88 }, 'right', 1), { x: 100, y: 80 });
 assert.deepEqual(anchorFromStrip(left, { width: 88, height: 88 }, 'left', 1), { x: 100, y: 80 });
 assert.deepEqual(anchorFromStrip(top, { width: 88, height: 88 }, 'top', 1), { x: 100, y: 80 });
 
 const scaled = stripBounds(full, 'right', 1.15);
-assert.ok(scaled.width >= 10 && scaled.width <= 14);
+assert.ok(scaled.width >= 24 && scaled.width <= 30);
 assert.equal(scaled.x + scaled.width, full.x + full.width);
 
 assert.equal(normalizeIdleFadeMs(undefined), 4000);

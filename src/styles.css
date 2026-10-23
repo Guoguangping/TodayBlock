@@ -362,10 +362,48 @@ html[data-view="bubble"] .bubble-strip {
   position: absolute;
   z-index: 4;
   opacity: 0;
+  overflow: hidden;
   pointer-events: none;
-  background: var(--accent);
-  box-shadow: inset 0 0 0 1px rgba(255, 255, 255, 0.35);
+  background:
+    radial-gradient(100% 100% at 50% 0%, color-mix(in srgb, var(--accent) 18%, transparent), transparent 62%),
+    linear-gradient(180deg, rgba(36, 46, 60, 0.98), rgba(9, 13, 18, 0.99));
+  box-shadow:
+    inset 0 0 0 1px color-mix(in srgb, var(--accent) 42%, rgba(255, 255, 255, 0.18)),
+    0 4px 14px rgba(0, 0, 0, 0.24);
   transition: opacity 150ms ease;
+}
+
+.bubble-strip-fill {
+  position: absolute;
+  inset: 0;
+  z-index: 0;
+  background: linear-gradient(
+    to top,
+    color-mix(in srgb, var(--accent) 46%, transparent) 0 var(--strip-progress, 0%),
+    transparent var(--strip-progress, 0%)
+  );
+  opacity: 0.9;
+}
+
+.bubble-strip-count {
+  position: absolute;
+  inset: 0;
+  z-index: 2;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: #f7fafc;
+  font-size: 11px;
+  line-height: 1;
+  font-weight: 720;
+  letter-spacing: -0.3px;
+  font-variant-numeric: tabular-nums;
+  text-shadow: 0 1px 2px rgba(0, 0, 0, 0.55);
+}
+
+.bubble.is-clear .bubble-strip-count {
+  color: #d1fae5;
+  font-size: 13px;
 }
 
 html[data-view="bubble"] .bubble.is-docked .bubble-face,
@@ -378,18 +416,18 @@ html[data-view="bubble"] .bubble.is-docked.dock-right .bubble-strip {
   opacity: 1;
   top: 8px;
   right: 0;
-  width: 12px;
+  width: 24px;
   height: 72px;
-  border-radius: 8px 0 0 8px;
+  border-radius: 10px 0 0 10px;
 }
 
 html[data-view="bubble"] .bubble.is-docked.dock-left .bubble-strip {
   opacity: 1;
   top: 8px;
   left: 0;
-  width: 12px;
+  width: 24px;
   height: 72px;
-  border-radius: 0 8px 8px 0;
+  border-radius: 0 10px 10px 0;
 }
 
 html[data-view="bubble"] .bubble.is-docked.dock-top .bubble-strip {
@@ -397,8 +435,16 @@ html[data-view="bubble"] .bubble.is-docked.dock-top .bubble-strip {
   top: 0;
   left: 8px;
   width: 72px;
-  height: 12px;
-  border-radius: 0 0 8px 8px;
+  height: 24px;
+  border-radius: 0 0 10px 10px;
+}
+
+html[data-view="bubble"] .bubble.is-docked.dock-top .bubble-strip-fill {
+  background: linear-gradient(
+    to right,
+    color-mix(in srgb, var(--accent) 46%, transparent) 0 var(--strip-progress, 0%),
+    transparent var(--strip-progress, 0%)
+  );
 }
 
 html[data-view="bubble"] .bubble.is-docked.is-dock-collapsed.dock-right .bubble-strip,

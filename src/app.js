@@ -351,10 +351,19 @@ function renderBubble() {
     badge.title = overdue ? `逾期 ${overdue} 项` : '';
   }
 
+  const progress = total > 0 ? Math.min(1, done / total) : 1;
+  const strip = $('.bubble-strip');
+  const stripCount = $('#bubble-strip-count');
+  if (strip) {
+    strip.style.setProperty('--strip-progress', `${Math.round(progress * 100)}%`);
+  }
+  if (stripCount) {
+    stripCount.textContent = count === 0 ? '✓' : count > 99 ? '99+' : String(count);
+  }
+
   // 描边从顶部起，按今天已完成 / 今天全部任务的比例加长；清空时画满一圈
   const arc = $('#bubble-arc');
   if (arc) {
-    const progress = total > 0 ? Math.min(1, done / total) : 1;
     arc.style.strokeDasharray = '100';
     arc.style.strokeDashoffset = String(100 * (1 - progress));
     arc.classList.toggle('is-empty', progress <= 0);
