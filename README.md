@@ -1,13 +1,24 @@
-# TodayBlock
+<img width="302" height="660" alt="image" src="https://github.com/user-attachments/assets/a9e2d53f-bda6-40fe-87a6-c6f474640f52" /># TodayBlock
 
 一个安静的 Windows 桌面工作助手：右上角悬浮今日数量，点开是工作日历；把文件拖进来，让 AI 拆成任务。
 
 > 当前版本是 **可运行的个人 MVP**，不是完整商业产品。数据默认只在本机。
 
-![悬浮块](screenshots/bubble.png)
-![日历面板](screenshots/panel.png)
-![文件解析预览](screenshots/file-preview.png)
-![AI 抽取预览](screenshots/ai-preview.png)
+![悬浮块]
+<img width="302" height="660" alt="image" src="https://github.com/user-attachments/assets/f02b39e5-73fa-412c-94ab-4b9a312fe13d" />
+
+![日历面板]
+<img width="518" height="782" alt="image" src="https://github.com/user-attachments/assets/f64f3db8-291f-4c40-bc86-fbcbbdd10418" />
+
+![文件解析预览]
+<img width="518" height="782" alt="image" src="https://github.com/user-attachments/assets/66d667d8-b5b4-4e35-82e6-5d4595b6ff9f" />
+
+
+![AI 文本解析预览]
+<img width="518" height="782" alt="image" src="https://github.com/user-attachments/assets/f8205e1d-bda3-45e2-a0c3-2b901e77ac3d" />
+
+![AI 抽取预览]
+<img width="518" height="782" alt="image" src="https://github.com/user-attachments/assets/d506ccd9-f30a-4996-84ee-c91bb4583a68" />
 
 > 首次启动会带 8 条示例任务，方便看效果。  
 > 在「设置 → 数据 → 清除示例」可以一键删掉，不影响你自己添加的任务。
