@@ -2106,7 +2106,7 @@ function registerIpc() {
     if (!list.length) throw new Error('没有选中的任务');
     const copied = new Map();
     const created = [];
-    for (const item of list.slice(0, 20)) {
+    for (const item of list.slice(0, 200)) {
       let sourcePath = cleanText(item?.sourcePath, 1000);
       if (sourcePath && fs.existsSync(sourcePath)) {
         if (!copied.has(sourcePath)) copied.set(sourcePath, await copyAttachment(sourcePath));
