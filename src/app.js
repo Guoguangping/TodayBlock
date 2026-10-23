@@ -600,7 +600,7 @@ function overviewTableHtml(tasks) {
     const overdue = status !== 'done' && task.dueDate && task.dueDate < state.today;
     const priority = PRIORITY[task.priority] || PRIORITY[0];
     const project = String(task.project || '').trim();
-    const detail = String(task.completion || task.notes || '').trim();
+    const detail = [task.completion, task.notes].filter(Boolean).join('\n').trim();
     return `
       <tr class="ov-table-row ${status === 'done' ? 'is-done' : ''}" data-task-id="${escapeAttr(task.id)}">
         <td class="ov-cell-check"><input class="ov-checkbox" type="checkbox" data-ov-select aria-label="选择任务" ${selected ? 'checked' : ''}></td>
@@ -612,7 +612,7 @@ function overviewTableHtml(tasks) {
         <td><span class="ov-status-pill status-${status}">${overviewStatusLabel(status)}</span></td>
         <td class="${overdue ? 'ov-due overdue' : ''}">${escapeHtml(overviewDueLabel(task))}</td>
         <td><span class="ov-priority-inline" style="color:${priority.color}">${priority.label}</span></td>
-        <td class="ov-cell-detail">${detail ? escapeHtml(detail.slice(0, 70)) : '<span class="ov-muted">—</span>'}</td>
+        <td class="ov-cell-detail">${detail ? escapeHtml(detail) : '<span class="ov-muted">—</span>'}</td>
         <td class="ov-cell-action"><button class="ov-complete" type="button" data-ov-toggle aria-label="${status === 'done' ? '重新打开' : '标记完成'}">${ICON.check}</button></td>
       </tr>
     `;

@@ -2553,9 +2553,15 @@ html[data-view="overview"] .overview {
   font-size: 8.5px;
 }
 
-.ov-cell-detail {
+.ov-table td.ov-cell-detail {
   color: var(--muted);
   font-size: 9.5px;
+  line-height: 1.5;
+  white-space: pre-wrap;
+  overflow: visible;
+  text-overflow: clip;
+  overflow-wrap: anywhere;
+  vertical-align: top;
 }
 
 .ov-cell-action {
@@ -2678,4 +2684,8 @@ html[data-view="overview"] .overview {
 
 .ov-table .ov-cell-check {
   width: 64px;
+}
+
+.ov-table-row td {
+  vertical-align: top;
 }
