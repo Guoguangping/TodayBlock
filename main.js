@@ -1113,6 +1113,15 @@ async function captureScreenshots() {
   if (overviewWin && !overviewWin.isDestroyed()) {
     image = await overviewWin.webContents.capturePage();
     fs.writeFileSync(path.join(shots, 'overview.png'), image.toPNG());
+    await overviewWin.webContents.executeJavaScript(`
+      (() => {
+        const ids = window.__todayApp.state.tasks.slice(0, 3).map((task) => task.id);
+        window.__todayApp.openBulkProject(ids);
+      })()
+    `);
+    await new Promise((resolve) => setTimeout(resolve, 350));
+    image = await overviewWin.webContents.capturePage();
+    fs.writeFileSync(path.join(shots, 'bulk-project.png'), image.toPNG());
     overviewWin.close();
     await new Promise((resolve) => setTimeout(resolve, 300));
   }

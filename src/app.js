@@ -633,6 +633,57 @@ function renderOverview() {
   if (selection) selection.hidden = state.ov.selected.size === 0;
 }
 
+function openBulkProject(ids) {
+  const currentProjects = [...new Set(ids.map((id) => taskById(id)?.project || '').filter(Boolean))];
+  const initial = currentProjects.length === 1 ? currentProjects[0] : '';
+  state.modal = { type: 'bulk-project' };
+  const root = $('#modal-root');
+  root.classList.add('is-active');
+  root.innerHTML = modalShell({
+    eyebrow: 'BULK EDIT',
+    title: '批量修改归属项目',
+    sub: `已选择 ${ids.length} 项任务。留空会清除这些任务的项目。`,
+    body: `
+      <div class="field">
+        <label for="bulk-project">项目名称</label>
+        <input id="bulk-project" list="bulk-project-suggestions" maxlength="120" value="${escapeAttr(initial)}" placeholder="输入或选择项目名称">
+        <datalist id="bulk-project-suggestions">
+          ${projectHistory().map((project) => `<option value="${escapeAttr(project)}"></option>`).join('')}
+        </datalist>
+      </div>
+    `,
+    footer: `
+      <div class="modal-actions">
+        <button class="btn ghost" type="button" data-close="1">取消</button>
+        <span class="spacer"></span>
+        <button class="btn primary" type="button" id="bulk-project-save">应用</button>
+      </div>
+    `
+  });
+
+  const input = $('#bulk-project');
+  input.focus();
+  const save = async () => {
+    const project = input.value.trim();
+    try {
+      await window.today.bulkUpdate(ids, { project });
+      state.ov.selected.clear();
+      closeModal();
+      await refresh();
+      toast(project ? `已改为「${project}」` : '已清除归属项目');
+    } catch (error) {
+      toast(friendlyError(error, '修改项目失败'), 'err');
+    }
+  };
+  $('#bulk-project-save').addEventListener('click', save);
+  input.addEventListener('keydown', (event) => {
+    if (event.key === 'Enter') {
+      event.preventDefault();
+      save();
+    }
+  });
+}
+
 async function exportOverview(format, scope) {
   const ids = scope === 'filtered'
     ? overviewFilteredTasks().map((task) => task.id)
@@ -763,9 +814,8 @@ function bindOverview() {
         } else if (action === 'reopen') {
           await window.today.bulkUpdate(ids, { status: 'todo' });
         } else if (action === 'project') {
-          const project = window.prompt('输入新的归属项目，留空则清除：', '');
-          if (project === null) return;
-          await window.today.bulkUpdate(ids, { project: project.trim() });
+          openBulkProject(ids);
+          return;
         } else if (action === 'delete') {
           if (!window.confirm(`删除选中的 ${ids.length} 个任务？`)) return;
           await window.today.bulkDelete(ids);
@@ -1923,6 +1973,7 @@ window.__todayApp = {
   openSettings,
   openTextParse,
   openDetail,
+  openBulkProject,
   closeModal,
   showPreview,
   refresh
