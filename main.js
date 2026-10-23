@@ -335,6 +335,10 @@ function applyUiScale() {
     if (expanded) win.setBounds(expandedBounds(), false);
   }
 
+  if (overviewWin && !overviewWin.isDestroyed()) {
+    overviewWin.webContents.setZoomFactor(UI_SCALE);
+  }
+
   saveStore();
 }
 
@@ -1031,6 +1035,7 @@ function createOverviewWindow() {
 function openOverview() {
   if (overviewWin && !overviewWin.isDestroyed()) {
     if (overviewWin.isMinimized()) overviewWin.restore();
+    overviewWin.webContents.setZoomFactor(UI_SCALE);
     overviewWin.show();
     overviewWin.focus();
     return true;
