@@ -120,6 +120,10 @@
             <option value="done">已完成</option>
           </select>
           <label class="ov-overdue"><input id="ov-overdue" type="checkbox">只看逾期</label>
+          <div class="ov-view-switch" role="group" aria-label="显示模式">
+            <button type="button" data-ov-mode="board">卡片</button>
+            <button type="button" data-ov-mode="table">表格</button>
+          </div>
           <button id="ov-trash" class="ov-button" type="button">回收站<span id="ov-trash-count" class="ov-trash-count">0</span></button>
           <div class="ov-export-wrap">
             <button id="ov-export" class="ov-button primary" type="button">导出</button>

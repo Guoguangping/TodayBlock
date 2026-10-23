@@ -2429,3 +2429,223 @@ html[data-view="overview"] .overview {
   color: var(--text);
   font-size: 13px;
 }
+
+.ov-view-switch,
+.trash-view-switch {
+  display: inline-flex;
+  align-items: center;
+  gap: 2px;
+  padding: 2px;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: var(--panel-2);
+}
+
+.ov-view-switch button,
+.trash-view-switch button {
+  height: 25px;
+  padding: 0 8px;
+  border: 0;
+  border-radius: 6px;
+  background: transparent;
+  color: var(--muted);
+  font-size: 9.5px;
+}
+
+.ov-view-switch button.is-active,
+.trash-view-switch button.is-active {
+  background: var(--panel-3);
+  color: var(--text);
+}
+
+.ov-board.is-table {
+  display: block;
+  overflow: auto;
+  border: 1px solid var(--line);
+  border-radius: 12px;
+  background: color-mix(in srgb, var(--panel) 78%, transparent);
+}
+
+.ov-table-wrap {
+  min-width: 820px;
+}
+
+.ov-table {
+  width: 100%;
+  border-collapse: collapse;
+  table-layout: fixed;
+  font-size: 10.5px;
+}
+
+.ov-table th {
+  position: sticky;
+  top: 0;
+  z-index: 1;
+  padding: 10px 9px;
+  border-bottom: 1px solid var(--line);
+  background: var(--panel);
+  color: var(--muted);
+  text-align: left;
+  font-size: 9px;
+  font-weight: 600;
+}
+
+.ov-table th:nth-child(2) { width: 28%; }
+.ov-table th:nth-child(3) { width: 13%; }
+.ov-table th:nth-child(4) { width: 9%; }
+.ov-table th:nth-child(5) { width: 11%; }
+.ov-table th:nth-child(6) { width: 7%; }
+.ov-table th:nth-child(7) { width: 23%; }
+.ov-table th:nth-child(8) { width: 40px; }
+
+.ov-table td {
+  padding: 9px;
+  border-bottom: 1px solid var(--line);
+  vertical-align: middle;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.ov-table-row {
+  cursor: pointer;
+}
+
+.ov-table-row:hover td {
+  background: var(--panel-2);
+}
+
+.ov-table-row.is-done {
+  opacity: 0.66;
+}
+
+.ov-cell-check {
+  width: 28px;
+}
+
+.ov-cell-title strong {
+  display: block;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  color: var(--text);
+  font-size: 11px;
+  font-weight: 600;
+}
+
+.ov-cell-title span {
+  display: block;
+  margin-top: 2px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  color: var(--muted-2);
+  font-size: 8.5px;
+}
+
+.ov-cell-detail {
+  color: var(--muted);
+  font-size: 9.5px;
+}
+
+.ov-cell-action {
+  text-align: center;
+}
+
+.ov-table-row .ov-complete {
+  margin: 0 auto;
+}
+
+.ov-priority-inline {
+  font-size: 9.5px;
+  font-weight: 700;
+}
+
+.ov-status-pill {
+  display: inline-block;
+  padding: 2px 6px;
+  border-radius: 999px;
+  background: var(--panel-3);
+  color: var(--muted);
+  font-size: 8.5px;
+}
+
+.ov-status-pill.status-doing {
+  background: color-mix(in srgb, var(--amber) 15%, transparent);
+  color: var(--amber);
+}
+
+.ov-status-pill.status-done {
+  background: color-mix(in srgb, var(--accent-2) 15%, transparent);
+  color: var(--accent-2);
+}
+
+.ov-status-pill.status-todo {
+  background: color-mix(in srgb, var(--blue) 13%, transparent);
+  color: var(--blue);
+}
+
+.ov-muted {
+  color: var(--muted-2);
+}
+
+.trash-view-row {
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  margin-bottom: 7px;
+}
+
+.trash-table-wrap {
+  max-height: 390px;
+  overflow: auto;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+}
+
+.trash-table {
+  width: 100%;
+  min-width: 580px;
+  border-collapse: collapse;
+  font-size: 9.5px;
+}
+
+.trash-table th {
+  position: sticky;
+  top: 0;
+  z-index: 1;
+  padding: 7px 6px;
+  border-bottom: 1px solid var(--line);
+  background: var(--panel);
+  color: var(--muted);
+  text-align: left;
+  font-size: 8.5px;
+}
+
+.trash-table td {
+  padding: 7px 6px;
+  border-bottom: 1px solid var(--line);
+  vertical-align: middle;
+}
+
+.trash-table-title {
+  max-width: 210px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  color: var(--text);
+  font-weight: 600;
+}
+
+.trash-table-actions {
+  white-space: nowrap;
+}
+
+.trash-table-actions .btn {
+  height: 24px;
+  padding: 0 6px;
+  font-size: 9px;
+}
+
+.modal-card.trash-modal {
+  width: min(760px, calc(100% - 40px));
+}

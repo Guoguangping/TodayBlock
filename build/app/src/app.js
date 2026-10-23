@@ -34,6 +34,15 @@ const VIEW_PARAM = new URLSearchParams(window.location.search).get('view');
 const VIEW = ['bubble', 'panel', 'overview'].includes(VIEW_PARAM) ? VIEW_PARAM : 'panel';
 document.documentElement.dataset.view = VIEW;
 
+function storedMode(key, fallback) {
+  try {
+    const value = localStorage.getItem(key);
+    return value || fallback;
+  } catch {
+    return fallback;
+  }
+}
+
 const state = {
   today: localKey(new Date()),
   tasks: [],
@@ -55,12 +64,14 @@ const state = {
     status: 'all',
     overdue: false,
     selected: new Set(),
-    dragId: null
+    dragId: null,
+    mode: storedMode('todayblock.overview.mode', 'board') === 'table' ? 'table' : 'board'
   },
   trashView: {
     query: '',
     project: '',
-    selected: new Set()
+    selected: new Set(),
+    mode: storedMode('todayblock.trash.mode', 'card') === 'table' ? 'table' : 'card'
   },
   dragDepth: 0,
   toastTimer: null,
@@ -581,6 +592,52 @@ function overviewCard(task) {
   `;
 }
 
+function overviewTableHtml(tasks) {
+  if (!tasks.length) return '';
+  const rows = tasks.map((task) => {
+    const status = overviewStatus(task);
+    const selected = state.ov.selected.has(task.id);
+    const overdue = status !== 'done' && task.dueDate && task.dueDate < state.today;
+    const priority = PRIORITY[task.priority] || PRIORITY[0];
+    const project = String(task.project || '').trim();
+    const detail = String(task.completion || task.notes || '').trim();
+    return `
+      <tr class="ov-table-row ${status === 'done' ? 'is-done' : ''}" data-task-id="${escapeAttr(task.id)}">
+        <td class="ov-cell-check"><input class="ov-checkbox" type="checkbox" data-ov-select aria-label="选择任务" ${selected ? 'checked' : ''}></td>
+        <td class="ov-cell-title">
+          <strong>${escapeHtml(task.title)}</strong>
+          ${task.sourceName ? `<span>${escapeHtml(task.sourceName)}</span>` : ''}
+        </td>
+        <td>${project ? `<span class="ov-project">#${escapeHtml(project)}</span>` : '<span class="ov-muted">—</span>'}</td>
+        <td><span class="ov-status-pill status-${status}">${overviewStatusLabel(status)}</span></td>
+        <td class="${overdue ? 'ov-due overdue' : ''}">${escapeHtml(overviewDueLabel(task))}</td>
+        <td><span class="ov-priority-inline" style="color:${priority.color}">${priority.label}</span></td>
+        <td class="ov-cell-detail">${detail ? escapeHtml(detail.slice(0, 70)) : '<span class="ov-muted">—</span>'}</td>
+        <td class="ov-cell-action"><button class="ov-complete" type="button" data-ov-toggle aria-label="${status === 'done' ? '重新打开' : '标记完成'}">${ICON.check}</button></td>
+      </tr>
+    `;
+  }).join('');
+  return `
+    <div class="ov-table-wrap">
+      <table class="ov-table">
+        <thead>
+          <tr>
+            <th class="ov-cell-check"></th>
+            <th>任务</th>
+            <th>项目</th>
+            <th>状态</th>
+            <th>截止</th>
+            <th>优先级</th>
+            <th>完成情况 / 备注</th>
+            <th class="ov-cell-action"></th>
+          </tr>
+        </thead>
+        <tbody>${rows}</tbody>
+      </table>
+    </div>
+  `;
+}
+
 function renderOverview() {
   const filtered = overviewFilteredTasks().sort(overviewSort);
   const total = state.tasks.length;
@@ -612,29 +669,38 @@ function renderOverview() {
   const search = $('#ov-search');
   if (search && search.value !== state.ov.query) search.value = state.ov.query;
 
-  const lanes = [
-    { key: 'todo', label: '待处理' },
-    { key: 'doing', label: '进行中' },
-    { key: 'done', label: '已完成' }
-  ];
+  $$('[data-ov-mode]').forEach((button) => {
+    button.classList.toggle('is-active', button.dataset.ovMode === state.ov.mode);
+  });
+
   const board = $('#ov-board');
   if (board) {
     board.hidden = filtered.length === 0;
-    board.innerHTML = lanes.map((lane) => {
-      const tasks = filtered.filter((task) => overviewStatus(task) === lane.key);
-      return `
-        <section class="ov-lane lane-${lane.key}" data-lane="${lane.key}">
-          <header class="ov-lane-head">
-            <span class="ov-lane-dot"></span>
-            <strong>${lane.label}</strong>
-            <span class="ov-lane-count">${tasks.length}</span>
-          </header>
-          <div class="ov-lane-body" data-lane-body="${lane.key}">
-            ${tasks.map(overviewCard).join('') || '<div class="ov-lane-empty">拖动任务到这里</div>'}
-          </div>
-        </section>
-      `;
-    }).join('');
+    board.classList.toggle('is-table', state.ov.mode === 'table');
+    if (state.ov.mode === 'table') {
+      board.innerHTML = overviewTableHtml(filtered);
+    } else {
+      const lanes = [
+        { key: 'todo', label: '待处理' },
+        { key: 'doing', label: '进行中' },
+        { key: 'done', label: '已完成' }
+      ];
+      board.innerHTML = lanes.map((lane) => {
+        const tasks = filtered.filter((task) => overviewStatus(task) === lane.key);
+        return `
+          <section class="ov-lane lane-${lane.key}" data-lane="${lane.key}">
+            <header class="ov-lane-head">
+              <span class="ov-lane-dot"></span>
+              <strong>${lane.label}</strong>
+              <span class="ov-lane-count">${tasks.length}</span>
+            </header>
+            <div class="ov-lane-body" data-lane-body="${lane.key}">
+              ${tasks.map(overviewCard).join('') || '<div class="ov-lane-empty">拖动任务到这里</div>'}
+            </div>
+          </section>
+        `;
+      }).join('');
+    }
   }
 
   const trashCount = $('#ov-trash-count');
@@ -739,6 +805,18 @@ function bindOverview() {
     renderOverview();
   });
 
+  $$('[data-ov-mode]').forEach((button) => {
+    button.addEventListener('click', () => {
+      state.ov.mode = button.dataset.ovMode === 'table' ? 'table' : 'board';
+      try {
+        localStorage.setItem('todayblock.overview.mode', state.ov.mode);
+      } catch {
+        /* ignore */
+      }
+      renderOverview();
+    });
+  });
+
   $('#ov-trash')?.addEventListener('click', () => openTrash());
 
   const exportMenu = $('#ov-export-menu');
@@ -758,7 +836,7 @@ function bindOverview() {
 
   const board = $('#ov-board');
   board?.addEventListener('click', async (event) => {
-    const card = event.target.closest('.ov-card');
+    const card = event.target.closest('.ov-card, .ov-table-row');
     if (!card) return;
     const id = card.dataset.taskId;
     if (event.target.closest('[data-ov-select]')) {
@@ -1340,6 +1418,36 @@ function trashItemHtml(task) {
   `;
 }
 
+function trashTableHtml(tasks) {
+  if (!tasks.length) return '';
+  const rows = tasks.map((task) => {
+    const project = String(task.project || '').trim();
+    return `
+      <tr class="trash-table-row" data-trash-id="${escapeAttr(task.id)}">
+        <td><input class="trash-check" type="checkbox" data-trash-select aria-label="选择任务" ${state.trashView.selected.has(task.id) ? 'checked' : ''}></td>
+        <td class="trash-table-title">${escapeHtml(task.title)}</td>
+        <td>${project ? `<span class="ov-project">#${escapeHtml(project)}</span>` : '<span class="ov-muted">—</span>'}</td>
+        <td>${overviewStatusLabel(overviewStatus(task))}</td>
+        <td>${escapeHtml(trashDeletedLabel(task.deletedAt).replace('删除于 ', ''))}</td>
+        <td class="trash-table-actions">
+          <button class="btn" type="button" data-trash-restore>恢复</button>
+          <button class="btn danger" type="button" data-trash-delete>彻底删除</button>
+        </td>
+      </tr>
+    `;
+  }).join('');
+  return `
+    <div class="trash-table-wrap">
+      <table class="trash-table">
+        <thead>
+          <tr><th></th><th>任务</th><th>项目</th><th>原状态</th><th>删除时间</th><th>操作</th></tr>
+        </thead>
+        <tbody>${rows}</tbody>
+      </table>
+    </div>
+  `;
+}
+
 function trashListHtml() {
   const tasks = trashFilteredTasks();
   if (!tasks.length) {
@@ -1348,13 +1456,16 @@ function trashListHtml() {
       <span>${state.trash.length ? '调整搜索或项目筛选。' : '删除的任务会先放在这里，可以恢复。'}</span>
     </div>`;
   }
-  return tasks.map(trashItemHtml).join('');
+  return state.trashView.mode === 'table'
+    ? trashTableHtml(tasks)
+    : tasks.map(trashItemHtml).join('');
 }
 
 function trashHtml() {
   return modalShell({
     eyebrow: 'RECYCLE BIN',
     title: '回收站',
+    extraClass: 'trash-modal',
     sub: `共 ${state.trash.length} 项。${state.trash.length ? '恢复后回到原状态；彻底删除后不可恢复。' : '这里会暂存删除的任务。'}`,
     body: `
       <div class="trash-toolbar">
@@ -1363,6 +1474,12 @@ function trashHtml() {
           <option value="">全部项目</option>
           ${trashProjects().map((project) => `<option value="${escapeAttr(project)}" ${project === state.trashView.project ? 'selected' : ''}>${escapeHtml(project)}</option>`).join('')}
         </select>
+      </div>
+      <div class="trash-view-row">
+        <div class="trash-view-switch" role="group" aria-label="回收站显示模式">
+          <button type="button" data-trash-mode="card" class="${state.trashView.mode === 'card' ? 'is-active' : ''}">卡片</button>
+          <button type="button" data-trash-mode="table" class="${state.trashView.mode === 'table' ? 'is-active' : ''}">表格</button>
+        </div>
       </div>
       <div class="trash-bulk">
         <strong><span id="trash-selected-count">${state.trashView.selected.size}</span> 项已选</strong>
@@ -1416,6 +1533,21 @@ function bindTrash() {
   $('#trash-project')?.addEventListener('change', (event) => {
     state.trashView.project = event.target.value;
     renderTrashList();
+  });
+
+  $$('[data-trash-mode]').forEach((button) => {
+    button.addEventListener('click', () => {
+      state.trashView.mode = button.dataset.trashMode === 'table' ? 'table' : 'card';
+      try {
+        localStorage.setItem('todayblock.trash.mode', state.trashView.mode);
+      } catch {
+        /* ignore */
+      }
+      $$('[data-trash-mode]').forEach((item) => {
+        item.classList.toggle('is-active', item.dataset.trashMode === state.trashView.mode);
+      });
+      renderTrashList();
+    });
   });
 
   const list = $('#trash-list');
