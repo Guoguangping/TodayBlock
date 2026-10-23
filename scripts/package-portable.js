@@ -26,7 +26,7 @@ if (!fs.existsSync(path.join(stage, 'node_modules', 'mammoth'))) {
   process.exit(1);
 }
 
-for (const entry of ['main.js', 'preload.js', 'src', 'assets']) {
+for (const entry of ['main.js', 'preload.js', 'lib', 'src', 'assets']) {
   const from = path.join(root, entry);
   const to = path.join(stage, entry);
   if (fs.existsSync(from)) {
@@ -56,6 +56,7 @@ fs.writeFileSync(path.join(out, '使用说明.txt'), [
   '',
   '单击悬浮块：展开日历。',
   '拖动悬浮块：移动位置。',
+  '鼠标离开约 4 秒后悬浮块变淡；若靠近屏幕左、右或上边缘，会收成一条细色带，鼠标移上去恢复。可在设置里关闭。',
   'Esc / 右上角 ×：收起。',
   '面板右上角「全览」：打开工作看板，可切换卡片/表格、搜索、筛选、拖动状态、批量操作和导出。',
   '回收站：删除的任务会先进入回收站，可恢复或彻底删除。',

@@ -290,6 +290,8 @@ async function refresh() {
 
 // 上一帧方块上显示的内容，用来判断数字要不要做一次上浮
 let bubbleShown = null;
+// 今日数量和逾期，用来在数字变化时把淡出的悬浮块叫醒
+let bubbleCountSignature = null;
 
 function renderBubble() {
   const bubble = $('#bubble');
@@ -302,7 +304,24 @@ function renderBubble() {
   if (count >= 6) level = 'level-high';
   else if (count >= 3) level = 'level-mid';
   else if (count >= 1) level = 'level-low';
-  bubble.className = ['bubble', level, count === 0 ? 'is-clear' : '', overdue > 0 ? 'has-overdue' : '']
+
+  let countsChanged = false;
+  if (VIEW === 'bubble') {
+    const signature = `${count}|${overdue}`;
+    countsChanged = bubbleCountSignature !== null && bubbleCountSignature !== signature;
+    bubbleCountSignature = signature;
+    if (countsChanged) wakeBubble();
+  }
+
+  const presence = VIEW === 'bubble'
+    ? [
+      bubbleIdle ? 'is-idle' : '',
+      dockVisual ? 'is-docked' : '',
+      bubbleDocked ? 'is-dock-collapsed' : '',
+      dockVisual && bubbleEdge ? `dock-${bubbleEdge}` : ''
+    ]
+    : [];
+  bubble.className = ['bubble', level, count === 0 ? 'is-clear' : '', overdue > 0 ? 'has-overdue' : '', ...presence]
     .filter(Boolean)
     .join(' ');
 
@@ -501,6 +520,7 @@ function renderAll() {
   app.classList.toggle('expanded', VIEW === 'panel');
   app.classList.toggle('collapsed', VIEW !== 'panel');
   app.classList.toggle('overview-mode', VIEW === 'overview');
+  syncBubbleQuietMode();
 }
 
 /* ------------------------------------------------------------------ */
@@ -1349,6 +1369,20 @@ function settingsHtml() {
           <button class="toggle ${s.alwaysOnTop ? 'on' : ''}" type="button" data-toggle="alwaysOnTop" aria-label="切换置顶"></button>
         </div>
         <div class="setting-row">
+          <div class="setting-copy"><strong>空闲淡出</strong><span>鼠标离开后变淡，并停掉光环转动</span></div>
+          <button class="toggle ${s.idleFade !== false ? 'on' : ''}" type="button" data-toggle="idleFade" aria-label="切换空闲淡出"></button>
+        </div>
+        <div class="setting-row">
+          <div class="setting-copy"><strong>淡出等待</strong><span>无操作多久后进入安静状态</span></div>
+          <select id="idle-fade-delay" class="setting-select" aria-label="淡出等待" ${s.idleFade === false ? 'disabled' : ''}>
+            ${idleFadeOptions(s.idleFadeMs).map((ms) => `<option value="${ms}" ${Number(s.idleFadeMs || 4000) === ms ? 'selected' : ''}>${ms / 1000} 秒</option>`).join('')}
+          </select>
+        </div>
+        <div class="setting-row">
+          <div class="setting-copy"><strong>贴边收起</strong><span>淡出后靠近左、右或上边缘时收成细条</span></div>
+          <button class="toggle ${s.edgeDock !== false ? 'on' : ''}" type="button" data-toggle="edgeDock" aria-label="切换贴边收起"></button>
+        </div>
+        <div class="setting-row">
           <div class="setting-copy"><strong>通知提醒</strong><span>到点提醒、每日摘要和逾期提醒</span></div>
           <button class="toggle ${s.notifications ? 'on' : ''}" type="button" data-toggle="notifications" aria-label="切换提醒"></button>
         </div>
@@ -1757,9 +1791,15 @@ function bindSettings() {
   $$('[data-toggle]').forEach((button) => {
     button.addEventListener('click', async () => {
       const key = button.dataset.toggle;
-      const next = !(state.settings?.[key]);
-      await saveSettings({ [key]: next });
+      const current = key === 'idleFade' || key === 'edgeDock'
+        ? state.settings?.[key] !== false
+        : Boolean(state.settings?.[key]);
+      await saveSettings({ [key]: !current });
     });
+  });
+
+  $('#idle-fade-delay')?.addEventListener('change', async (event) => {
+    await saveSettings({ idleFadeMs: Number(event.target.value) });
   });
 
   $('#data-folder').addEventListener('click', () => window.today.openDataFolder());
@@ -2087,6 +2127,199 @@ function bindDrop() {
 }
 
 /* ------------------------------------------------------------------ */
+/* bubble quiet mode: idle fade + edge dock                           */
+/* ------------------------------------------------------------------ */
+
+const DOCK_MORPH_MS = 150;
+// 是否处于淡出；贴边动画进行中；窗口是否已经被裁成细条
+let bubbleIdle = false;
+let dockVisual = false;
+let bubbleDocked = false;
+let docking = false;
+let dockGen = 0;
+let bubbleEdge = null;
+let pointerInside = false;
+let bubbleDragging = false;
+let idleTimer = null;
+let appliedIdleDelay = null;
+
+function idleFadeEnabled() {
+  return state.settings?.idleFade !== false;
+}
+
+function edgeDockEnabled() {
+  return state.settings?.edgeDock !== false;
+}
+
+function idleFadeMs() {
+  const value = Number(state.settings?.idleFadeMs);
+  if (!Number.isFinite(value)) return 4000;
+  return Math.min(30000, Math.max(1000, Math.round(value)));
+}
+
+function idleFadeOptions(current) {
+  const value = Number(current);
+  const ms = Number.isFinite(value) ? Math.min(30000, Math.max(1000, Math.round(value))) : 4000;
+  const values = [2000, 4000, 8000];
+  if (!values.includes(ms)) values.push(ms);
+  return values;
+}
+
+function motionReduced() {
+  return window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+}
+
+function wait(ms) {
+  return new Promise((resolve) => setTimeout(resolve, ms));
+}
+
+function isInteracting() {
+  return pointerInside || bubbleDragging;
+}
+
+// 与 lib/bubble-presence.js 的 shouldEdgeDock 同一条规则：中间不收缩。
+function canEdgeDock(edge = bubbleEdge) {
+  return Boolean(bubbleIdle && edgeDockEnabled() && edge && !isInteracting());
+}
+
+function applyBubblePresenceClasses() {
+  if (VIEW !== 'bubble') return;
+  const bubble = $('#bubble');
+  if (!bubble) return;
+  bubble.classList.toggle('is-idle', bubbleIdle);
+  bubble.classList.toggle('is-docked', dockVisual);
+  bubble.classList.toggle('is-dock-collapsed', bubbleDocked);
+  bubble.classList.remove('dock-left', 'dock-right', 'dock-top');
+  if (dockVisual && bubbleEdge) bubble.classList.add(`dock-${bubbleEdge}`);
+}
+
+function clearDockVisual() {
+  dockVisual = false;
+  bubbleDocked = false;
+  const bubble = $('#bubble');
+  bubble?.classList.remove('is-docked', 'is-dock-collapsed', 'dock-left', 'dock-right', 'dock-top');
+}
+
+function releaseDock() {
+  dockGen += 1;
+  const needsRestore = bubbleDocked;
+  clearDockVisual();
+  if (needsRestore && VIEW === 'bubble') window.today.undockBubble().catch(() => {});
+}
+
+/** 恢复实心完整气泡。鼠标进入、数量变化、展开快捷键和拖动都会走这里。 */
+function wakeBubble() {
+  if (VIEW !== 'bubble') return;
+  clearTimeout(idleTimer);
+  idleTimer = null;
+  releaseDock();
+  bubbleIdle = false;
+  $('#bubble')?.classList.remove('is-idle');
+  if (idleFadeEnabled() && !isInteracting()) scheduleIdle();
+}
+
+function scheduleIdle() {
+  if (VIEW !== 'bubble') return;
+  clearTimeout(idleTimer);
+  idleTimer = null;
+  if (!idleFadeEnabled() || isInteracting() || bubbleIdle) return;
+  idleTimer = setTimeout(enterIdle, idleFadeMs());
+}
+
+function enterIdle() {
+  idleTimer = null;
+  if (VIEW !== 'bubble' || isInteracting() || !idleFadeEnabled()) return;
+  bubbleIdle = true;
+  applyBubblePresenceClasses();
+  // 边缘以主进程实时结果为准，屏幕中间会在 dockNow 里直接放弃
+  if (edgeDockEnabled()) void dockNow();
+}
+
+async function dockNow() {
+  if (VIEW !== 'bubble' || docking || bubbleDocked || dockVisual) return;
+  if (!bubbleIdle || isInteracting() || !edgeDockEnabled()) return;
+  docking = true;
+  const gen = ++dockGen;
+  try {
+    // 以主进程刚算的边缘为准，避免用拖动前的旧边缘在屏幕中间收成细条
+    const placement = await window.today.getBubbleEdge();
+    bubbleEdge = placement?.edge || null;
+    if (gen !== dockGen || !canEdgeDock()) return;
+    dockVisual = true;
+    applyBubblePresenceClasses();
+    await wait(motionReduced() ? 0 : DOCK_MORPH_MS);
+    if (gen !== dockGen || !canEdgeDock()) {
+      clearDockVisual();
+      if (bubbleIdle) applyBubblePresenceClasses();
+      return;
+    }
+    const result = await window.today.dockBubble();
+    if (gen !== dockGen || !result?.docked || !result.edge || !canEdgeDock(result.edge)) {
+      clearDockVisual();
+      if (bubbleIdle) applyBubblePresenceClasses();
+      if (result?.docked) window.today.undockBubble().catch(() => {});
+      return;
+    }
+    bubbleEdge = result.edge;
+    bubbleDocked = true;
+    applyBubblePresenceClasses();
+  } catch {
+    clearDockVisual();
+    if (bubbleIdle) applyBubblePresenceClasses();
+    window.today.undockBubble().catch(() => {});
+  } finally {
+    docking = false;
+  }
+}
+
+function handleBubbleEdge(payload) {
+  if (VIEW !== 'bubble') return;
+  bubbleEdge = payload?.edge || null;
+  if (!bubbleEdge && dockVisual && !bubbleDocked) {
+    dockGen += 1;
+    clearDockVisual();
+    if (bubbleIdle) applyBubblePresenceClasses();
+    return;
+  }
+  if (payload?.docked === false && bubbleDocked) {
+    bubbleDocked = false;
+    dockVisual = false;
+    applyBubblePresenceClasses();
+    return;
+  }
+  if (bubbleDocked && bubbleEdge) applyBubblePresenceClasses();
+  if (canEdgeDock() && !bubbleDocked && !dockVisual && !docking) void dockNow();
+}
+
+function syncBubbleQuietMode() {
+  if (VIEW !== 'bubble') return;
+  if (!idleFadeEnabled()) {
+    wakeBubble();
+    return;
+  }
+  if (!edgeDockEnabled() && (dockVisual || bubbleDocked)) releaseDock();
+  const delay = idleFadeMs();
+  if (appliedIdleDelay !== null && appliedIdleDelay !== delay && !bubbleIdle && !isInteracting()) {
+    appliedIdleDelay = delay;
+    scheduleIdle();
+    return;
+  }
+  appliedIdleDelay = delay;
+  if (canEdgeDock() && !bubbleDocked && !dockVisual && !docking) void dockNow();
+  if (!bubbleIdle && !isInteracting() && !idleTimer) scheduleIdle();
+}
+
+async function refreshBubbleEdge() {
+  if (VIEW !== 'bubble') return;
+  try {
+    const placement = await window.today.getBubbleEdge();
+    handleBubbleEdge(placement || { edge: null, docked: false });
+  } catch {
+    /* 边缘查询失败时保持当前状态 */
+  }
+}
+
+/* ------------------------------------------------------------------ */
 /* bubble drag & open                                                  */
 /* ------------------------------------------------------------------ */
 
@@ -2097,6 +2330,11 @@ function bindBubble() {
   bubble.addEventListener('pointerdown', (event) => {
     if (event.button !== 0) return;
     event.preventDefault();
+    if (VIEW === 'bubble') {
+      bubbleDragging = true;
+      pointerInside = true;
+      wakeBubble();
+    }
     drag = {
       x: event.screenX,
       y: event.screenY,
@@ -2108,6 +2346,10 @@ function bindBubble() {
   });
 
   bubble.addEventListener('pointermove', (event) => {
+    if (VIEW === 'bubble' && !drag && (bubbleIdle || dockVisual || bubbleDocked)) {
+      pointerInside = true;
+      wakeBubble();
+    }
     if (!drag || event.pointerId !== drag.pointerId) return;
     const dx = event.screenX - drag.x;
     const dy = event.screenY - drag.y;
@@ -2120,6 +2362,12 @@ function bindBubble() {
     const moved = drag.moved;
     drag = null;
     window.today.dragEnd();
+    if (VIEW === 'bubble') {
+      bubbleDragging = false;
+      pointerInside = bubble.matches(':hover');
+      if (moved) void refreshBubbleEdge();
+      if (!pointerInside) scheduleIdle();
+    }
     if (!moved) openPanel();
   });
 
@@ -2127,11 +2375,30 @@ function bindBubble() {
     if (!drag) return;
     drag = null;
     window.today.dragEnd();
+    if (VIEW === 'bubble') {
+      bubbleDragging = false;
+      pointerInside = bubble.matches(':hover');
+      void refreshBubbleEdge();
+      if (!pointerInside) scheduleIdle();
+    }
+  });
+
+  bubble.addEventListener('pointerenter', () => {
+    if (VIEW !== 'bubble' || bubbleDragging) return;
+    pointerInside = true;
+    wakeBubble();
+  });
+
+  bubble.addEventListener('pointerleave', () => {
+    if (VIEW !== 'bubble' || bubbleDragging) return;
+    pointerInside = false;
+    scheduleIdle();
   });
 
   bubble.addEventListener('keydown', (event) => {
     if (event.key === 'Enter' || event.key === ' ') {
       event.preventDefault();
+      if (VIEW === 'bubble') wakeBubble();
       openPanel();
     }
   });
@@ -2294,8 +2561,12 @@ function bindEvents() {
   });
 
   window.today.onExpanded(() => {
+    // Ctrl+Alt+T 和托盘切换展开时，把淡出或贴边的悬浮块叫醒
+    if (VIEW === 'bubble') wakeBubble();
     if (VIEW === 'panel') renderPanel();
   });
+
+  window.today.onBubbleEdge((payload) => handleBubbleEdge(payload));
 
   window.today.onOpenSettings(() => openSettings());
 
@@ -2338,6 +2609,12 @@ async function boot() {
     renderAll();
     const dateInput = $('#quick-date');
     if (dateInput) dateInput.value = state.selectedDate;
+    if (VIEW === 'bubble') {
+      pointerInside = Boolean($('#bubble')?.matches(':hover'));
+      if (pointerInside) wakeBubble();
+      else scheduleIdle();
+      void refreshBubbleEdge();
+    }
   } catch (error) {
     toast(`启动失败：${friendlyError(error)}`, 'err');
   }

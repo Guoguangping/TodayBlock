@@ -137,6 +137,7 @@ html[data-view="overview"] .app {
   filter: blur(8px);
   opacity: 0.2;
   pointer-events: none;
+  transition: opacity 150ms ease;
 }
 
 .bubble-face {
@@ -153,7 +154,8 @@ html[data-view="overview"] .app {
   box-shadow:
     inset 0 1px 0 rgba(255, 255, 255, 0.2),
     inset 0 0 0 1px rgba(255, 255, 255, 0.05);
-  transition: transform 160ms ease, box-shadow 160ms ease;
+  opacity: 1;
+  transition: opacity 150ms ease, transform 160ms ease, box-shadow 160ms ease;
 }
 
 .bubble-face::before {
@@ -338,6 +340,125 @@ html[data-view="overview"] .app {
 
 .bubble-overdue[hidden] {
   display: none !important;
+}
+
+/* 空闲淡出：约 0.5 透明度，并停掉转圈光环。恢复同样走 150ms。 */
+html[data-view="bubble"] .bubble {
+  opacity: 1;
+  transition: opacity 150ms ease;
+}
+
+html[data-view="bubble"] .bubble.is-idle {
+  opacity: 0.5;
+}
+
+html[data-view="bubble"] .bubble.is-idle .bubble-glint {
+  animation: none;
+  opacity: 0;
+}
+
+/* 贴边细条。先在完整窗口里收到外沿，主进程再把窗口裁成同一块矩形。 */
+html[data-view="bubble"] .bubble-strip {
+  position: absolute;
+  z-index: 4;
+  opacity: 0;
+  pointer-events: none;
+  background: var(--accent);
+  box-shadow: inset 0 0 0 1px rgba(255, 255, 255, 0.35);
+  transition: opacity 150ms ease;
+}
+
+html[data-view="bubble"] .bubble.is-docked .bubble-face,
+html[data-view="bubble"] .bubble.is-docked .bubble-halo {
+  opacity: 0;
+  pointer-events: none;
+}
+
+html[data-view="bubble"] .bubble.is-docked.dock-right .bubble-strip {
+  opacity: 1;
+  top: 8px;
+  right: 0;
+  width: 12px;
+  height: 72px;
+  border-radius: 8px 0 0 8px;
+}
+
+html[data-view="bubble"] .bubble.is-docked.dock-left .bubble-strip {
+  opacity: 1;
+  top: 8px;
+  left: 0;
+  width: 12px;
+  height: 72px;
+  border-radius: 0 8px 8px 0;
+}
+
+html[data-view="bubble"] .bubble.is-docked.dock-top .bubble-strip {
+  opacity: 1;
+  top: 0;
+  left: 8px;
+  width: 72px;
+  height: 12px;
+  border-radius: 0 0 8px 8px;
+}
+
+html[data-view="bubble"] .bubble.is-docked.is-dock-collapsed.dock-right .bubble-strip,
+html[data-view="bubble"] .bubble.is-docked.is-dock-collapsed.dock-left .bubble-strip,
+html[data-view="bubble"] .bubble.is-docked.is-dock-collapsed.dock-top .bubble-strip {
+  inset: 0;
+  width: auto;
+  height: auto;
+}
+
+html[data-view="bubble"] .bubble.is-dock-collapsed .bubble-face,
+html[data-view="bubble"] .bubble.is-dock-collapsed .bubble-halo {
+  display: none;
+}
+
+html[data-view="bubble"] .bubble.is-docked .bubble-overdue {
+  z-index: 6;
+  width: 6px;
+  height: 6px;
+  box-shadow: none;
+}
+
+html[data-view="bubble"] .bubble.is-docked.dock-right .bubble-overdue {
+  top: 14px;
+  right: 3px;
+  left: auto;
+}
+
+html[data-view="bubble"] .bubble.is-docked.dock-left .bubble-overdue {
+  top: 14px;
+  left: 3px;
+  right: auto;
+}
+
+html[data-view="bubble"] .bubble.is-docked.dock-top .bubble-overdue {
+  top: 3px;
+  right: 14px;
+  left: auto;
+}
+
+html[data-view="bubble"] .bubble.is-dock-collapsed.dock-right .bubble-overdue,
+html[data-view="bubble"] .bubble.is-dock-collapsed.dock-left .bubble-overdue {
+  top: 4px;
+}
+
+html[data-view="bubble"] .bubble.is-dock-collapsed.dock-top .bubble-overdue {
+  top: 3px;
+  right: 4px;
+}
+
+html[data-view="bubble"] .bubble.is-docked.has-overdue.dock-left .bubble-strip {
+  box-shadow: inset 0 0 0 1px rgba(255, 255, 255, 0.35), inset 3px 0 0 #fb7185;
+}
+
+html[data-view="bubble"] .bubble.is-docked.has-overdue.dock-right .bubble-strip {
+  box-shadow: inset 0 0 0 1px rgba(255, 255, 255, 0.35), inset -3px 0 0 #fb7185;
+}
+
+html[data-view="bubble"] .bubble.is-docked.has-overdue.dock-top .bubble-strip {
+  box-shadow: inset 0 0 0 1px rgba(255, 255, 255, 0.35), inset 0 3px 0 #fb7185;
 }
 
 /* ------------------------------------------------------------------ */
@@ -1485,6 +1606,21 @@ html[data-view="panel"] .modal-backdrop {
   line-height: 1.4;
 }
 
+.setting-select {
+  height: 28px;
+  min-width: 72px;
+  padding: 0 6px;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: var(--panel-2);
+  color: var(--text);
+  font-size: 10.5px;
+}
+
+.setting-select:disabled {
+  opacity: 0.45;
+}
+
 .toggle {
   position: relative;
   width: 32px;
@@ -1816,6 +1952,15 @@ html[data-view="panel"] .modal-backdrop {
   .bubble-arc {
     animation-duration: 180ms !important;
     transition-duration: 160ms !important;
+  }
+
+  html[data-view="bubble"] .bubble,
+  html[data-view="bubble"] .bubble-strip,
+  html[data-view="bubble"] .bubble.is-docked .bubble-face,
+  html[data-view="bubble"] .bubble.is-docked .bubble-halo,
+  html[data-view="bubble"] .bubble.is-idle .bubble-glint {
+    transition-duration: 1ms !important;
+    animation: none !important;
   }
 }
 
