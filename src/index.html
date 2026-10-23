@@ -120,6 +120,7 @@
             <option value="done">已完成</option>
           </select>
           <label class="ov-overdue"><input id="ov-overdue" type="checkbox">只看逾期</label>
+          <button id="ov-trash" class="ov-button" type="button">回收站<span id="ov-trash-count" class="ov-trash-count">0</span></button>
           <div class="ov-export-wrap">
             <button id="ov-export" class="ov-button primary" type="button">导出</button>
             <div id="ov-export-menu" class="ov-export-menu" hidden>
@@ -137,7 +138,7 @@
         <button class="ov-button" type="button" data-bulk="done">标记完成</button>
         <button class="ov-button" type="button" data-bulk="reopen">重新打开</button>
         <button class="ov-button" type="button" data-bulk="project">改项目</button>
-        <button class="ov-button danger" type="button" data-bulk="delete">删除</button>
+        <button class="ov-button danger" type="button" data-bulk="delete">移到回收站</button>
         <button class="ov-button" type="button" data-bulk="export">导出所选</button>
         <button class="ov-link" type="button" data-bulk="clear">取消选择</button>
       </div>

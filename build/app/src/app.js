@@ -37,6 +37,8 @@ document.documentElement.dataset.view = VIEW;
 const state = {
   today: localKey(new Date()),
   tasks: [],
+  trash: [],
+  trashCount: 0,
   settings: null,
   dataDir: '',
   dataMode: '',
@@ -54,6 +56,11 @@ const state = {
     overdue: false,
     selected: new Set(),
     dragId: null
+  },
+  trashView: {
+    query: '',
+    project: '',
+    selected: new Set()
   },
   dragDepth: 0,
   toastTimer: null,
@@ -230,6 +237,8 @@ function applyState(snapshot) {
   if (!snapshot) return;
   state.today = snapshot.today || state.today;
   state.tasks = Array.isArray(snapshot.tasks) ? snapshot.tasks : [];
+  state.trash = Array.isArray(snapshot.trash) ? snapshot.trash : [];
+  state.trashCount = Number(snapshot.trashCount) || state.trash.length;
   state.settings = snapshot.settings || state.settings;
   state.dataDir = snapshot.dataDir || state.dataDir;
   state.dataMode = snapshot.dataMode || state.dataMode;
@@ -628,6 +637,11 @@ function renderOverview() {
     }).join('');
   }
 
+  const trashCount = $('#ov-trash-count');
+  if (trashCount) trashCount.textContent = String(state.trashCount || 0);
+  const trashButton = $('#ov-trash');
+  if (trashButton) trashButton.classList.toggle('has-trash', (state.trashCount || 0) > 0);
+
   const empty = $('#ov-empty');
   if (empty) empty.hidden = filtered.length > 0;
 
@@ -725,6 +739,8 @@ function bindOverview() {
     renderOverview();
   });
 
+  $('#ov-trash')?.addEventListener('click', () => openTrash());
+
   const exportMenu = $('#ov-export-menu');
   $('#ov-export')?.addEventListener('click', (event) => {
     event.stopPropagation();
@@ -821,8 +837,9 @@ function bindOverview() {
           openBulkProject(ids);
           return;
         } else if (action === 'delete') {
-          if (!window.confirm(`删除选中的 ${ids.length} 个任务？`)) return;
+          if (!window.confirm(`将选中的 ${ids.length} 个任务移到回收站？`)) return;
           await window.today.bulkDelete(ids);
+          toast(`已移 ${ids.length} 项到回收站`);
         } else if (action === 'export') {
           await exportOverview('xlsx', 'selected');
           return;
@@ -946,7 +963,7 @@ function detailHtml(task) {
 
   const footer = `
     <div class="modal-actions">
-      <button class="btn danger" type="button" id="detail-delete">${ICON.trash}删除</button>
+      <button class="btn danger" type="button" id="detail-delete">${ICON.trash}移到回收站</button>
       ${task.sourcePath ? `<button class="btn ghost" type="button" id="detail-source">${ICON.open}源文件</button>` : ''}
       <span class="spacer"></span>
       <button class="btn ghost" type="button" data-close="1">取消</button>
@@ -1052,12 +1069,11 @@ function bindDetail(task) {
   });
 
   $('#detail-delete').addEventListener('click', async () => {
-    if (!window.confirm('删除这个任务？此操作不可撤销。')) return;
     try {
       await window.today.deleteTask(task.id);
       closeModal();
       await refresh();
-      toast('任务已删除');
+      toast('已移到回收站');
     } catch (error) {
       toast(friendlyError(error), 'err');
     }
@@ -1259,6 +1275,7 @@ function settingsHtml() {
           <button class="btn" type="button" id="data-folder">${ICON.open}数据目录</button>
           <button class="btn" type="button" id="data-export">导出备份</button>
           <button class="btn" type="button" id="window-reset">重置位置</button>
+          <button class="btn" type="button" id="data-trash">回收站 (${state.trashCount || 0})</button>
           <button class="btn danger" type="button" id="data-clear-demo">清除示例</button>
         </div>
         <p class="settings-note">${state.dataMode === 'portable'
@@ -1274,6 +1291,203 @@ function settingsHtml() {
         <button class="btn ghost" type="button" data-close="1">关闭</button>
       </div>
     `
+  });
+}
+
+function trashProjects() {
+  const names = [];
+  for (const task of [...state.tasks, ...state.trash]) {
+    const project = String(task.project || '').trim();
+    if (project && !names.includes(project)) names.push(project);
+  }
+  return names.slice(0, 80);
+}
+
+function trashFilteredTasks() {
+  const query = state.trashView.query.trim().toLowerCase();
+  return state.trash.filter((task) => {
+    if (state.trashView.project && String(task.project || '').trim() !== state.trashView.project) return false;
+    if (!query) return true;
+    return [task.title, task.project, task.notes, task.completion, task.sourceName]
+      .filter(Boolean).join('\n').toLowerCase().includes(query);
+  });
+}
+
+function trashDeletedLabel(value) {
+  if (!value) return '删除时间未知';
+  const date = new Date(value);
+  if (Number.isNaN(date.getTime())) return '删除时间未知';
+  return `删除于 ${date.toLocaleString('zh-CN', { hour12: false })}`;
+}
+
+function trashItemHtml(task) {
+  const status = overviewStatus(task);
+  const selected = state.trashView.selected.has(task.id);
+  const project = String(task.project || '').trim();
+  return `
+    <div class="trash-item ${selected ? 'is-selected' : ''}" data-trash-id="${escapeAttr(task.id)}">
+      <input class="trash-check" type="checkbox" data-trash-select aria-label="选择任务" ${selected ? 'checked' : ''}>
+      <div class="trash-copy">
+        <strong class="trash-title">${escapeHtml(task.title)}</strong>
+        <span class="trash-meta">${project ? `#${escapeHtml(project)} · ` : ''}原状态：${overviewStatusLabel(status)}${task.dueDate ? ` · 截止 ${escapeHtml(task.dueDate)}` : ''}</span>
+        <span class="trash-meta">${escapeHtml(trashDeletedLabel(task.deletedAt))}</span>
+      </div>
+      <div class="trash-actions">
+        <button class="btn" type="button" data-trash-restore>恢复</button>
+        <button class="btn danger" type="button" data-trash-delete>彻底删除</button>
+      </div>
+    </div>
+  `;
+}
+
+function trashListHtml() {
+  const tasks = trashFilteredTasks();
+  if (!tasks.length) {
+    return `<div class="trash-empty">
+      <strong>${state.trash.length ? '没有符合条件的任务' : '回收站是空的'}</strong>
+      <span>${state.trash.length ? '调整搜索或项目筛选。' : '删除的任务会先放在这里，可以恢复。'}</span>
+    </div>`;
+  }
+  return tasks.map(trashItemHtml).join('');
+}
+
+function trashHtml() {
+  return modalShell({
+    eyebrow: 'RECYCLE BIN',
+    title: '回收站',
+    sub: `共 ${state.trash.length} 项。${state.trash.length ? '恢复后回到原状态；彻底删除后不可恢复。' : '这里会暂存删除的任务。'}`,
+    body: `
+      <div class="trash-toolbar">
+        <input id="trash-search" class="trash-search" type="search" value="${escapeAttr(state.trashView.query)}" placeholder="搜索已删除任务…">
+        <select id="trash-project" class="trash-select">
+          <option value="">全部项目</option>
+          ${trashProjects().map((project) => `<option value="${escapeAttr(project)}" ${project === state.trashView.project ? 'selected' : ''}>${escapeHtml(project)}</option>`).join('')}
+        </select>
+      </div>
+      <div class="trash-bulk">
+        <strong><span id="trash-selected-count">${state.trashView.selected.size}</span> 项已选</strong>
+        <button class="btn" type="button" data-trash-bulk="restore">恢复</button>
+        <button class="btn danger" type="button" data-trash-bulk="delete">彻底删除</button>
+        <button class="ov-link" type="button" data-trash-bulk="clear">取消选择</button>
+      </div>
+      <div id="trash-list" class="trash-list">${trashListHtml()}</div>
+    `,
+    footer: `
+      <div class="modal-actions">
+        <button class="btn ghost" type="button" id="trash-restore-all" ${state.trash.length ? '' : 'disabled'}>全部恢复</button>
+        <button class="btn danger" type="button" id="trash-empty" ${state.trash.length ? '' : 'disabled'}>清空回收站</button>
+        <span class="spacer"></span>
+        <button class="btn ghost" type="button" data-close="1">关闭</button>
+      </div>
+    `
+  });
+}
+
+function openTrash() {
+  state.modal = { type: 'trash' };
+  const root = $('#modal-root');
+  root.classList.add('is-active');
+  root.innerHTML = trashHtml();
+  bindTrash();
+}
+
+function renderTrashList() {
+  const list = $('#trash-list');
+  if (list) list.innerHTML = trashListHtml();
+  const count = $('#trash-selected-count');
+  if (count) count.textContent = String(state.trashView.selected.size);
+  const bulk = $('.trash-bulk');
+  if (bulk) bulk.classList.toggle('is-active', state.trashView.selected.size > 0);
+}
+
+async function refreshTrashModal(message) {
+  state.trashView.selected.clear();
+  await refresh();
+  openTrash();
+  if (message) toast(message);
+}
+
+function bindTrash() {
+  const search = $('#trash-search');
+  search?.addEventListener('input', () => {
+    state.trashView.query = search.value;
+    renderTrashList();
+  });
+  $('#trash-project')?.addEventListener('change', (event) => {
+    state.trashView.project = event.target.value;
+    renderTrashList();
+  });
+
+  const list = $('#trash-list');
+  list?.addEventListener('click', async (event) => {
+    const item = event.target.closest('[data-trash-id]');
+    if (!item) return;
+    const id = item.dataset.trashId;
+    if (event.target.closest('[data-trash-select]')) {
+      if (state.trashView.selected.has(id)) state.trashView.selected.delete(id);
+      else state.trashView.selected.add(id);
+      renderTrashList();
+      return;
+    }
+    try {
+      if (event.target.closest('[data-trash-restore]')) {
+        await window.today.restoreTrash([id]);
+        await refreshTrashModal('已恢复任务');
+      } else if (event.target.closest('[data-trash-delete]')) {
+        if (!window.confirm('彻底删除这个任务？删除后不可恢复。')) return;
+        await window.today.deleteTrash([id]);
+        await refreshTrashModal('已彻底删除');
+      }
+    } catch (error) {
+      toast(friendlyError(error, '操作失败'), 'err');
+    }
+  });
+
+  $$('[data-trash-bulk]').forEach((button) => {
+    button.addEventListener('click', async () => {
+      const action = button.dataset.trashBulk;
+      if (action === 'clear') {
+        state.trashView.selected.clear();
+        renderTrashList();
+        return;
+      }
+      const ids = [...state.trashView.selected];
+      if (!ids.length) return;
+      try {
+        if (action === 'restore') {
+          await window.today.restoreTrash(ids);
+          await refreshTrashModal(`已恢复 ${ids.length} 项`);
+        } else if (action === 'delete') {
+          if (!window.confirm(`彻底删除选中的 ${ids.length} 个任务？删除后不可恢复。`)) return;
+          await window.today.deleteTrash(ids);
+          await refreshTrashModal(`已彻底删除 ${ids.length} 项`);
+        }
+      } catch (error) {
+        toast(friendlyError(error, '操作失败'), 'err');
+      }
+    });
+  });
+
+  $('#trash-restore-all')?.addEventListener('click', async () => {
+    if (!state.trash.length) return;
+    if (!window.confirm(`恢复回收站里的 ${state.trash.length} 个任务？`)) return;
+    try {
+      await window.today.restoreAllTrash();
+      await refreshTrashModal('已恢复全部任务');
+    } catch (error) {
+      toast(friendlyError(error, '恢复失败'), 'err');
+    }
+  });
+
+  $('#trash-empty')?.addEventListener('click', async () => {
+    if (!state.trash.length) return;
+    if (!window.confirm(`彻底删除回收站里的 ${state.trash.length} 个任务？删除后不可恢复。`)) return;
+    try {
+      await window.today.emptyTrash();
+      await refreshTrashModal('回收站已清空');
+    } catch (error) {
+      toast(friendlyError(error, '清空失败'), 'err');
+    }
   });
 }
 
@@ -1404,6 +1618,7 @@ function bindSettings() {
     await window.today.resetPosition();
     toast('悬浮块已回到右上角');
   });
+  $('#data-trash')?.addEventListener('click', () => openTrash());
   $('#data-clear-demo').addEventListener('click', async () => {
     if (!window.confirm('删除所有示例任务？你自己创建的任务不会受影响。')) return;
     await window.today.clearDemo();
@@ -1982,6 +2197,7 @@ window.__todayApp = {
   openTextParse,
   openDetail,
   openBulkProject,
+  openTrash,
   closeModal,
   showPreview,
   refresh

@@ -455,7 +455,7 @@ function seedDemo() {
 
 function repairAttachmentPaths() {
   let changed = false;
-  for (const task of store.tasks) {
+  for (const task of [...store.tasks, ...(store.trash || [])]) {
     const value = String(task.sourcePath || '').trim();
     if (!value) continue;
     const localCopy = path.join(ATTACHMENTS_DIR, path.basename(value));
@@ -473,6 +473,35 @@ function repairAttachmentPaths() {
     }
   }
   if (changed) saveStore();
+}
+
+function cleanupOrphanAttachments() {
+  const referenced = new Set();
+  for (const task of [...store.tasks, ...store.trash]) {
+    const value = String(task.sourcePath || '').trim();
+    if (!value) continue;
+    const resolved = path.resolve(value).toLowerCase();
+    if (resolved.startsWith(`${path.resolve(ATTACHMENTS_DIR).toLowerCase()}${path.sep}`)) {
+      referenced.add(resolved);
+    }
+  }
+  let names = [];
+  try {
+    names = fs.readdirSync(ATTACHMENTS_DIR);
+  } catch {
+    return;
+  }
+  for (const name of names) {
+    const full = path.join(ATTACHMENTS_DIR, name);
+    if (!fs.existsSync(full) || !fs.statSync(full).isFile()) continue;
+    if (!referenced.has(path.resolve(full).toLowerCase())) {
+      try {
+        fs.unlinkSync(full);
+      } catch {
+        /* ignore */
+      }
+    }
+  }
 }
 
 function loadStore() {
@@ -498,6 +527,7 @@ function loadStore() {
   store = {
     version: 1,
     tasks: Array.isArray(raw?.tasks) ? raw.tasks : [],
+    trash: Array.isArray(raw?.trash) ? raw.trash : [],
     settings: mergeSettings(raw?.settings)
   };
 
@@ -580,6 +610,10 @@ function getSnapshot() {
   return {
     today,
     tasks: store.tasks,
+    trash: [...store.trash].sort((a, b) => (
+      String(b.deletedAt || '').localeCompare(String(a.deletedAt || ''))
+    )),
+    trashCount: store.trash.length,
     settings: publicSettings(),
     counts: {
       today: todayPending.length,
@@ -1961,6 +1995,54 @@ function updateTask(id, patch) {
 /* IPC                                                                 */
 /* ------------------------------------------------------------------ */
 
+function moveTasksToTrash(ids) {
+  const wanted = new Set((Array.isArray(ids) ? ids : []).slice(0, 500));
+  if (!wanted.size) throw new Error('没有选中的任务');
+  const selected = store.tasks.filter((task) => wanted.has(task.id));
+  if (!selected.length) throw new Error('任务不存在');
+  const now = new Date().toISOString();
+  store.tasks = store.tasks.filter((task) => !wanted.has(task.id));
+  for (const task of selected) {
+    task.deletedAt = now;
+    task.deletedFrom = task.status || 'todo';
+    store.trash.unshift(task);
+  }
+  saveStore();
+  broadcast();
+  return selected.length;
+}
+
+function restoreTrashTasks(ids) {
+  const wanted = new Set((Array.isArray(ids) ? ids : []).slice(0, 500));
+  if (!wanted.size) throw new Error('没有选中的任务');
+  const selected = store.trash.filter((task) => wanted.has(task.id));
+  if (!selected.length) throw new Error('回收站里没有这些任务');
+  store.trash = store.trash.filter((task) => !wanted.has(task.id));
+  const now = new Date().toISOString();
+  for (const task of selected) {
+    delete task.deletedAt;
+    delete task.deletedFrom;
+    task.updatedAt = now;
+    if (!store.tasks.some((item) => item.id === task.id)) store.tasks.push(task);
+  }
+  saveStore();
+  broadcast();
+  return selected.length;
+}
+
+function deleteTrashPermanently(ids) {
+  const wanted = new Set((Array.isArray(ids) ? ids : []).slice(0, 500));
+  if (!wanted.size) throw new Error('没有选中的任务');
+  const before = store.trash.length;
+  store.trash = store.trash.filter((task) => !wanted.has(task.id));
+  const removed = before - store.trash.length;
+  if (!removed) throw new Error('回收站里没有这些任务');
+  cleanupOrphanAttachments();
+  saveStore();
+  broadcast();
+  return removed;
+}
+
 function registerIpc() {
   ipcMain.handle('app:get-state', () => getSnapshot());
   ipcMain.handle('overview:open', () => openOverview());
@@ -1990,11 +2072,7 @@ function registerIpc() {
   });
 
   ipcMain.handle('task:delete', (_event, id) => {
-    const before = store.tasks.length;
-    store.tasks = store.tasks.filter((item) => item.id !== id);
-    if (store.tasks.length === before) throw new Error('任务不存在');
-    saveStore();
-    broadcast();
+    moveTasksToTrash([id]);
     return true;
   });
 
@@ -2011,16 +2089,12 @@ function registerIpc() {
     return updated;
   });
 
-  ipcMain.handle('task:bulk-delete', (_event, ids) => {
-    const wanted = new Set((Array.isArray(ids) ? ids : []).slice(0, 500));
-    if (!wanted.size) throw new Error('没有选中的任务');
-    const before = store.tasks.length;
-    store.tasks = store.tasks.filter((task) => !wanted.has(task.id));
-    if (store.tasks.length === before) throw new Error('任务不存在');
-    saveStore();
-    broadcast();
-    return before - store.tasks.length;
-  });
+  ipcMain.handle('task:bulk-delete', (_event, ids) => moveTasksToTrash(ids));
+
+  ipcMain.handle('trash:restore', (_event, ids) => restoreTrashTasks(ids));
+  ipcMain.handle('trash:restore-all', () => restoreTrashTasks(store.trash.map((task) => task.id)));
+  ipcMain.handle('trash:delete', (_event, ids) => deleteTrashPermanently(ids));
+  ipcMain.handle('trash:empty', () => deleteTrashPermanently(store.trash.map((task) => task.id)));
 
   ipcMain.handle('task:bulk-create', async (_event, payload) => {
     const list = Array.isArray(payload?.tasks) ? payload.tasks : [];
