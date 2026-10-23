@@ -16,12 +16,21 @@ const executable = PELibrary.NtExecutable.from(fs.readFileSync(exePath), { ignor
 const resources = PELibrary.NtExecutableResource.from(executable);
 const iconFile = ResEdit.Data.IconFile.from(fs.readFileSync(icoPath));
 
-ResEdit.Resource.IconGroupEntry.replaceIconsForResource(
-  resources.entries,
-  101,
-  1033,
-  iconFile.icons.map((item) => item.data)
-);
+// Electron's stub contains more than one RT_GROUP_ICON (usually 1 and 101).
+// Explorer uses the first group, so replace every group instead of only 101.
+const iconData = iconFile.icons.map((item) => item.data);
+const iconGroupIds = [...new Set(
+  resources.entries.filter((entry) => entry.type === 14).map((entry) => entry.id)
+)];
+if (!iconGroupIds.length) iconGroupIds.push(1);
+for (const id of iconGroupIds) {
+  ResEdit.Resource.IconGroupEntry.replaceIconsForResource(
+    resources.entries,
+    id,
+    1033,
+    iconData
+  );
+}
 
 const versions = ResEdit.Resource.VersionInfo.fromEntries(resources.entries);
 if (versions.length) {
