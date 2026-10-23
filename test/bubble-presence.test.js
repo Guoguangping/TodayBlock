@@ -71,6 +71,19 @@ const scaled = stripBounds(full, 'right', 1.15);
 assert.ok(scaled.width >= 24 && scaled.width <= 30);
 assert.equal(scaled.x + scaled.width, full.x + full.width);
 
+const edgeWork = { x: 0, y: 0, width: 1920, height: 1040 };
+const rightEdge = stripBounds(
+  { x: 1824, y: 80, width: 88, height: 88 },
+  'right',
+  1,
+  edgeWork
+);
+assert.deepEqual(rightEdge, { x: 1896, y: 88, width: 24, height: 72 }, '右侧贴边不留缝');
+const leftEdge = stripBounds({ x: 8, y: 80, width: 88, height: 88 }, 'left', 1, edgeWork);
+assert.deepEqual(leftEdge, { x: 0, y: 88, width: 24, height: 72 }, '左侧贴边不留缝');
+const topEdge = stripBounds({ x: 400, y: 8, width: 88, height: 88 }, 'top', 1, edgeWork);
+assert.deepEqual(topEdge, { x: 408, y: 0, width: 72, height: 24 }, '顶部贴边不留缝');
+
 assert.equal(normalizeIdleFadeMs(undefined), 4000);
 assert.equal(normalizeIdleFadeMs(2000), 2000);
 assert.equal(normalizeIdleFadeMs(50), 1000);

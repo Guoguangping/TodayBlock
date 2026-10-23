@@ -340,8 +340,9 @@ function applyUiScale() {
     if (docking && store.settings.edgeDock !== false && store.settings.idleFade !== false) {
       const edge = logicalBubbleEdge();
       if (edge) {
+        const full = collapsedBounds();
         bubbleDockedEdge = edge;
-        bubbleWin.setBounds(stripBounds(collapsedBounds(), edge, UI_SCALE), false);
+        bubbleWin.setBounds(stripBounds(full, edge, UI_SCALE, displayWorkArea(full)), false);
       } else {
         bubbleDockedEdge = null;
         bubbleWin.setBounds(collapsedBounds(), false);
@@ -793,13 +794,14 @@ function dockBubbleWindow() {
     return { edge: logicalBubbleEdge(), docked: false };
   }
   const full = collapsedBounds();
-  const edge = nearestScreenEdge(full, displayWorkArea(full), EDGE_DOCK_THRESHOLD);
+  const workArea = displayWorkArea(full);
+  const edge = nearestScreenEdge(full, workArea, EDGE_DOCK_THRESHOLD);
   if (!edge) {
     if (bubbleDockedEdge) undockBubbleWindow();
     return { edge: null, docked: false };
   }
   bubbleDockedEdge = edge;
-  bubbleWin.setBounds(stripBounds(full, edge, UI_SCALE), false);
+  bubbleWin.setBounds(stripBounds(full, edge, UI_SCALE, workArea), false);
   return { edge, docked: true };
 }
 
@@ -815,8 +817,9 @@ function relayoutDockedBubble() {
     publishBubbleEdge();
     return;
   }
+  const full = collapsedBounds();
   bubbleDockedEdge = edge;
-  bubbleWin.setBounds(stripBounds(collapsedBounds(), edge, UI_SCALE), false);
+  bubbleWin.setBounds(stripBounds(full, edge, UI_SCALE, displayWorkArea(full)), false);
   publishBubbleEdge();
 }
 
