@@ -132,7 +132,7 @@ html[data-view="overview"] .app {
 .bubble-halo {
   position: absolute;
   inset: 14px;
-  border-radius: 20px;
+  border-radius: 16px;
   background: var(--accent);
   filter: blur(8px);
   opacity: 0.2;
@@ -146,7 +146,7 @@ html[data-view="overview"] .app {
   left: 8px;
   width: 72px;
   height: 72px;
-  border-radius: 18px;
+  border-radius: 14px;
   overflow: hidden;
   background:
     radial-gradient(120% 80% at 24% 0%, color-mix(in srgb, var(--accent) 32%, transparent), transparent 58%),
@@ -418,7 +418,7 @@ html[data-view="bubble"] .bubble.is-docked.dock-right .bubble-strip {
   right: 0;
   width: 24px;
   height: 72px;
-  border-radius: 8px 0 0 8px;
+  border-radius: 6px 0 0 6px;
 }
 
 html[data-view="bubble"] .bubble.is-docked.dock-left .bubble-strip {
@@ -427,7 +427,7 @@ html[data-view="bubble"] .bubble.is-docked.dock-left .bubble-strip {
   left: 0;
   width: 24px;
   height: 72px;
-  border-radius: 0 8px 8px 0;
+  border-radius: 0 6px 6px 0;
 }
 
 html[data-view="bubble"] .bubble.is-docked.dock-top .bubble-strip {
@@ -436,7 +436,7 @@ html[data-view="bubble"] .bubble.is-docked.dock-top .bubble-strip {
   left: 8px;
   width: 72px;
   height: 24px;
-  border-radius: 0 0 8px 8px;
+  border-radius: 0 0 6px 6px;
 }
 
 html[data-view="bubble"] .bubble.is-docked.dock-top .bubble-strip-fill {
@@ -476,10 +476,10 @@ html[data-view="bubble"] .bubble.is-docked.dock-left .bubble-overdue {
 }
 
 html[data-view="bubble"] .bubble.is-docked.dock-top .bubble-overdue {
-  top: 3px;
-  left: 50%;
-  right: auto;
-  transform: translateX(-50%);
+  top: 50%;
+  left: auto;
+  right: 8px;
+  transform: translateY(-50%);
 }
 
 html[data-view="bubble"] .bubble.is-dock-collapsed.dock-right .bubble-overdue,
@@ -488,9 +488,10 @@ html[data-view="bubble"] .bubble.is-dock-collapsed.dock-left .bubble-overdue {
 }
 
 html[data-view="bubble"] .bubble.is-dock-collapsed.dock-top .bubble-overdue {
-  top: 3px;
-  left: 50%;
-  right: auto;
+  top: 50%;
+  left: auto;
+  right: 8px;
+  transform: translateY(-50%);
 }
 
 html[data-view="bubble"] .bubble.is-docked.has-overdue.dock-left .bubble-strip {
