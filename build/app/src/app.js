@@ -30,9 +30,8 @@ const ICON = {
   calendar: '<svg viewBox="0 0 24 24" aria-hidden="true"><rect x="4" y="5" width="16" height="15" rx="2"></rect><path d="M8 3v4M16 3v4M4 10h16"></path></svg>'
 };
 
-const VIEW = new URLSearchParams(window.location.search).get('view') === 'bubble'
-  ? 'bubble'
-  : 'panel';
+const VIEW_PARAM = new URLSearchParams(window.location.search).get('view');
+const VIEW = ['bubble', 'panel', 'overview'].includes(VIEW_PARAM) ? VIEW_PARAM : 'panel';
 document.documentElement.dataset.view = VIEW;
 
 const state = {
@@ -46,6 +45,14 @@ const state = {
   viewMonth: new Date().getMonth(),
   modal: null,
   preview: null,
+  ov: {
+    query: '',
+    project: '',
+    status: 'all',
+    overdue: false,
+    selected: new Set(),
+    dragId: null
+  },
   dragDepth: 0,
   toastTimer: null,
   loading: false
@@ -143,8 +150,11 @@ function taskColor(task) {
 }
 
 function sortTasks(tasks) {
+  const statusRank = { todo: 0, doing: 1, done: 2 };
   return [...tasks].sort((a, b) => {
-    if (a.status !== b.status) return a.status === 'done' ? 1 : -1;
+    if (a.status !== b.status) {
+      return (statusRank[a.status] ?? 0) - (statusRank[b.status] ?? 0);
+    }
     const aTime = a.dueTime || '99:99';
     const bTime = b.dueTime || '99:99';
     if (aTime !== bTime) return aTime.localeCompare(bTime);
@@ -232,6 +242,7 @@ function applyState(snapshot) {
   const showPanel = VIEW === 'panel';
   app.classList.toggle('expanded', showPanel);
   app.classList.toggle('collapsed', !showPanel);
+  app.classList.toggle('overview-mode', VIEW === 'overview');
 }
 
 function applyTheme() {
@@ -416,7 +427,7 @@ function renderDayList() {
 
   list.innerHTML = tasks.map((task) => {
     const color = safeColor(taskColor(task));
-    const doneClass = task.status === 'done' ? 'is-done' : '';
+    const doneClass = task.status === 'done' ? 'is-done' : task.status === 'doing' ? 'is-doing' : '';
     const time = task.dueTime || '全天';
     const project = String(task.project || '').trim();
     const source = project
@@ -456,11 +467,319 @@ function renderPanel() {
 }
 
 function renderAll() {
-  renderBubble();
-  if (VIEW === 'panel') renderPanel();
+  if (VIEW === 'overview') {
+    renderOverview();
+  } else {
+    renderBubble();
+    if (VIEW === 'panel') renderPanel();
+  }
   const app = $('#app');
   app.classList.toggle('expanded', VIEW === 'panel');
   app.classList.toggle('collapsed', VIEW !== 'panel');
+  app.classList.toggle('overview-mode', VIEW === 'overview');
+}
+
+/* ------------------------------------------------------------------ */
+/* overview board                                                      */
+/* ------------------------------------------------------------------ */
+
+function overviewStatus(task) {
+  return ['todo', 'doing', 'done'].includes(task.status) ? task.status : 'todo';
+}
+
+function overviewStatusLabel(status) {
+  if (status === 'done') return '已完成';
+  if (status === 'doing') return '进行中';
+  return '待处理';
+}
+
+function overviewDueLabel(task) {
+  if (!task.dueDate) return '无日期';
+  const date = task.dueDate === state.today ? '今天' : task.dueDate.slice(5);
+  const time = task.dueTime ? ` ${task.dueTime}` : '';
+  const overdue = overviewStatus(task) !== 'done' && task.dueDate < state.today;
+  return `${date}${time}${overdue ? ' · 逾期' : ''}`;
+}
+
+function overviewFilteredTasks() {
+  const query = state.ov.query.trim().toLowerCase();
+  return state.tasks.filter((task) => {
+    const status = overviewStatus(task);
+    if (state.ov.project && String(task.project || '').trim() !== state.ov.project) return false;
+    if (state.ov.status !== 'all' && status !== state.ov.status) return false;
+    if (state.ov.overdue) {
+      if (status === 'done' || !task.dueDate || task.dueDate >= state.today) return false;
+    }
+    if (query) {
+      const haystack = [
+        task.title,
+        task.project,
+        task.notes,
+        task.completion,
+        task.sourceName
+      ].filter(Boolean).join('\n').toLowerCase();
+      if (!haystack.includes(query)) return false;
+    }
+    return true;
+  });
+}
+
+function overviewSort(a, b) {
+  const aStatus = overviewStatus(a);
+  const bStatus = overviewStatus(b);
+  if (aStatus === 'done' || bStatus === 'done') {
+    if (aStatus !== bStatus) return aStatus === 'done' ? 1 : -1;
+    return new Date(b.completedAt || 0).getTime() - new Date(a.completedAt || 0).getTime();
+  }
+  const aDate = a.dueDate || '9999-99-99';
+  const bDate = b.dueDate || '9999-99-99';
+  if (aDate !== bDate) return aDate.localeCompare(bDate);
+  const aTime = a.dueTime || '99:99';
+  const bTime = b.dueTime || '99:99';
+  if (aTime !== bTime) return aTime.localeCompare(bTime);
+  return (b.priority || 0) - (a.priority || 0);
+}
+
+function overviewCard(task) {
+  const status = overviewStatus(task);
+  const selected = state.ov.selected.has(task.id);
+  const priority = PRIORITY[task.priority] || PRIORITY[0];
+  const overdue = status !== 'done' && task.dueDate && task.dueDate < state.today;
+  const project = String(task.project || '').trim();
+  const completion = String(task.completion || '').trim();
+  return `
+    <article class="ov-card ${status === 'done' ? 'is-done' : ''} ${status === 'doing' ? 'is-doing' : ''} ${overdue ? 'is-overdue' : ''}" style="--priority-color:${priority.color}" draggable="true" data-task-id="${escapeAttr(task.id)}">
+      <div class="ov-card-top">
+        <input class="ov-checkbox" type="checkbox" data-ov-select aria-label="选择任务" ${selected ? 'checked' : ''}>
+        <span class="ov-priority">${priority.label}</span>
+        <button class="ov-complete" type="button" data-ov-toggle aria-label="${status === 'done' ? '重新打开' : '标记完成'}">${ICON.check}</button>
+      </div>
+      <h4 class="ov-card-title">${escapeHtml(task.title)}</h4>
+      <div class="ov-card-sub">
+        ${project ? `<span class="ov-project">#${escapeHtml(project)}</span>` : ''}
+        <span class="${overdue ? 'ov-due overdue' : 'ov-due'}">${escapeHtml(overviewDueLabel(task))}</span>
+      </div>
+      ${completion ? `<p class="ov-completion">${escapeHtml(completion.slice(0, 90))}</p>` : ''}
+      <div class="ov-card-foot">
+        <span>${task.sourceName ? escapeHtml(task.sourceName) : overviewStatusLabel(status)}</span>
+        ${task.sourcePath ? `<span class="ov-source">源文件</span>` : ''}
+      </div>
+    </article>
+  `;
+}
+
+function renderOverview() {
+  const filtered = overviewFilteredTasks().sort(overviewSort);
+  const total = state.tasks.length;
+  const pending = state.tasks.filter((task) => overviewStatus(task) !== 'done').length;
+  const doing = state.tasks.filter((task) => overviewStatus(task) === 'doing').length;
+  const done = state.tasks.filter((task) => overviewStatus(task) === 'done').length;
+  const overdue = state.tasks.filter((task) => (
+    overviewStatus(task) !== 'done' && task.dueDate && task.dueDate < state.today
+  )).length;
+
+  const summary = $('#ov-summary');
+  if (summary) {
+    summary.textContent = `共 ${total} 项 · 未完成 ${pending} · 进行中 ${doing} · 逾期 ${overdue} · 已完成 ${done}`;
+  }
+
+  const projectSelect = $('#ov-project');
+  if (projectSelect) {
+    const names = projectHistory();
+    if (state.ov.project && !names.includes(state.ov.project)) names.push(state.ov.project);
+    projectSelect.innerHTML = '<option value="">全部项目</option>'
+      + names.map((project) => `<option value="${escapeAttr(project)}">${escapeHtml(project)}</option>`).join('');
+    projectSelect.value = state.ov.project;
+  }
+
+  const statusSelect = $('#ov-status');
+  if (statusSelect) statusSelect.value = state.ov.status;
+  const overdueToggle = $('#ov-overdue');
+  if (overdueToggle) overdueToggle.checked = state.ov.overdue;
+  const search = $('#ov-search');
+  if (search && search.value !== state.ov.query) search.value = state.ov.query;
+
+  const lanes = [
+    { key: 'todo', label: '待处理' },
+    { key: 'doing', label: '进行中' },
+    { key: 'done', label: '已完成' }
+  ];
+  const board = $('#ov-board');
+  if (board) {
+    board.hidden = filtered.length === 0;
+    board.innerHTML = lanes.map((lane) => {
+      const tasks = filtered.filter((task) => overviewStatus(task) === lane.key);
+      return `
+        <section class="ov-lane lane-${lane.key}" data-lane="${lane.key}">
+          <header class="ov-lane-head">
+            <span class="ov-lane-dot"></span>
+            <strong>${lane.label}</strong>
+            <span class="ov-lane-count">${tasks.length}</span>
+          </header>
+          <div class="ov-lane-body" data-lane-body="${lane.key}">
+            ${tasks.map(overviewCard).join('') || '<div class="ov-lane-empty">拖动任务到这里</div>'}
+          </div>
+        </section>
+      `;
+    }).join('');
+  }
+
+  const empty = $('#ov-empty');
+  if (empty) empty.hidden = filtered.length > 0;
+
+  const selection = $('#ov-selection');
+  const selectedCount = $('#ov-selected-count');
+  if (selectedCount) selectedCount.textContent = String(state.ov.selected.size);
+  if (selection) selection.hidden = state.ov.selected.size === 0;
+}
+
+async function exportOverview(format, scope) {
+  const ids = scope === 'filtered'
+    ? overviewFilteredTasks().map((task) => task.id)
+    : scope === 'selected'
+      ? [...state.ov.selected]
+      : null;
+  try {
+    const result = await window.today.exportTasks({ format, ids });
+    if (result?.ok) toast(`已导出 ${result.count} 项任务`);
+    else if (!result?.canceled) toast(result?.message || '导出失败', 'err');
+  } catch (error) {
+    toast(friendlyError(error, '导出失败'), 'err');
+  }
+}
+
+function bindOverview() {
+  const search = $('#ov-search');
+  search?.addEventListener('input', () => {
+    state.ov.query = search.value;
+    renderOverview();
+  });
+
+  $('#ov-project')?.addEventListener('change', (event) => {
+    state.ov.project = event.target.value;
+    renderOverview();
+  });
+
+  $('#ov-status')?.addEventListener('change', (event) => {
+    state.ov.status = event.target.value;
+    renderOverview();
+  });
+
+  $('#ov-overdue')?.addEventListener('change', (event) => {
+    state.ov.overdue = event.target.checked;
+    renderOverview();
+  });
+
+  const exportMenu = $('#ov-export-menu');
+  $('#ov-export')?.addEventListener('click', (event) => {
+    event.stopPropagation();
+    if (exportMenu) exportMenu.hidden = !exportMenu.hidden;
+  });
+  document.addEventListener('click', (event) => {
+    if (!event.target.closest('.ov-export-wrap') && exportMenu) exportMenu.hidden = true;
+  });
+  $$('#ov-export-menu [data-export-format]').forEach((button) => {
+    button.addEventListener('click', async () => {
+      if (exportMenu) exportMenu.hidden = true;
+      await exportOverview(button.dataset.exportFormat, button.dataset.exportScope);
+    });
+  });
+
+  const board = $('#ov-board');
+  board?.addEventListener('click', async (event) => {
+    const card = event.target.closest('.ov-card');
+    if (!card) return;
+    const id = card.dataset.taskId;
+    if (event.target.closest('[data-ov-select]')) {
+      if (state.ov.selected.has(id)) state.ov.selected.delete(id);
+      else state.ov.selected.add(id);
+      renderOverview();
+      return;
+    }
+    if (event.target.closest('[data-ov-toggle]')) {
+      await window.today.toggleTask(id);
+      await refresh();
+      return;
+    }
+    openDetail(id);
+  });
+
+  board?.addEventListener('dragstart', (event) => {
+    const card = event.target.closest('.ov-card');
+    if (!card) return;
+    state.ov.dragId = card.dataset.taskId;
+    card.classList.add('is-dragging');
+    event.dataTransfer.effectAllowed = 'move';
+    event.dataTransfer.setData('text/plain', card.dataset.taskId);
+  });
+
+  board?.addEventListener('dragend', () => {
+    state.ov.dragId = null;
+    $$('.ov-card.is-dragging').forEach((card) => card.classList.remove('is-dragging'));
+    $$('.ov-lane-body.is-drop-target').forEach((lane) => lane.classList.remove('is-drop-target'));
+  });
+
+  board?.addEventListener('dragover', (event) => {
+    const lane = event.target.closest('[data-lane-body]');
+    if (!lane) return;
+    event.preventDefault();
+    lane.classList.add('is-drop-target');
+  });
+
+  board?.addEventListener('dragleave', (event) => {
+    const lane = event.target.closest('[data-lane-body]');
+    if (lane && !lane.contains(event.relatedTarget)) lane.classList.remove('is-drop-target');
+  });
+
+  board?.addEventListener('drop', async (event) => {
+    const lane = event.target.closest('[data-lane-body]');
+    if (!lane) return;
+    event.preventDefault();
+    lane.classList.remove('is-drop-target');
+    const id = event.dataTransfer.getData('text/plain') || state.ov.dragId;
+    const task = taskById(id);
+    const status = lane.dataset.laneBody;
+    const current = task ? overviewStatus(task) : null;
+    state.ov.dragId = null;
+    if (!task || !['todo', 'doing', 'done'].includes(status) || status === current) return;
+    await window.today.updateTask(id, { status });
+    await refresh();
+    toast(`已移动到「${overviewStatusLabel(status)}」`);
+  });
+
+  $$('[data-bulk]').forEach((button) => {
+    button.addEventListener('click', async () => {
+      const action = button.dataset.bulk;
+      if (action === 'clear') {
+        state.ov.selected.clear();
+        renderOverview();
+        return;
+      }
+      const ids = [...state.ov.selected];
+      if (!ids.length) return;
+      try {
+        if (action === 'done') {
+          await window.today.bulkUpdate(ids, { status: 'done' });
+        } else if (action === 'reopen') {
+          await window.today.bulkUpdate(ids, { status: 'todo' });
+        } else if (action === 'project') {
+          const project = window.prompt('输入新的归属项目，留空则清除：', '');
+          if (project === null) return;
+          await window.today.bulkUpdate(ids, { project: project.trim() });
+        } else if (action === 'delete') {
+          if (!window.confirm(`删除选中的 ${ids.length} 个任务？`)) return;
+          await window.today.bulkDelete(ids);
+        } else if (action === 'export') {
+          await exportOverview('xlsx', 'selected');
+          return;
+        }
+        state.ov.selected.clear();
+        await refresh();
+      } catch (error) {
+        toast(friendlyError(error, '批量操作失败'), 'err');
+      }
+    });
+  });
 }
 
 /* ------------------------------------------------------------------ */
@@ -534,6 +853,16 @@ function priorityOptions(selected) {
   )).join('');
 }
 
+function statusOptions(selected) {
+  return [
+    { value: 'todo', label: '待处理' },
+    { value: 'doing', label: '进行中' },
+    { value: 'done', label: '已完成' }
+  ].map((item) => (
+    `<option value="${item.value}" ${overviewStatus({ status: selected }) === item.value ? 'selected' : ''}>${item.label}</option>`
+  )).join('');
+}
+
 /* ------------------------------------------------------------------ */
 /* modal: detail                                                       */
 /* ------------------------------------------------------------------ */
@@ -572,7 +901,7 @@ function detailHtml(task) {
   `;
 
   return modalShell({
-    eyebrow: task.status === 'done' ? '已完成任务' : '任务详情',
+    eyebrow: task.status === 'done' ? '已完成任务' : task.status === 'doing' ? '进行中任务' : '任务详情',
     title: task.title,
     sub: `${formatSelected(task.dueDate || state.selectedDate)}${task.dueTime ? ` · ${task.dueTime}` : ''}`,
     body: `
@@ -587,6 +916,10 @@ function detailHtml(task) {
           <datalist id="project-suggestions">
             ${projectHistory().map((project) => `<option value="${escapeAttr(project)}"></option>`).join('')}
           </datalist>
+        </div>
+        <div class="field">
+          <label for="detail-status">状态</label>
+          <select id="detail-status" name="status">${statusOptions(task.status)}</select>
         </div>
         <div class="field-row">
           <div class="field">
@@ -631,6 +964,7 @@ function bindDetail(task) {
     const patch = {
       title: $('#detail-title').value.trim(),
       project: $('#detail-project').value.trim(),
+      status: $('#detail-status').value,
       dueDate: $('#detail-date').value || null,
       dueTime: $('#detail-time').value || null,
       priority: Number($('#detail-priority').value || 0),
@@ -1421,9 +1755,15 @@ function bindPanelDrag() {
 /* ------------------------------------------------------------------ */
 
 function bindEvents() {
-  bindBubble();
-  bindPanelDrag();
-  bindDrop();
+  if (VIEW === 'overview') {
+    bindOverview();
+  } else {
+    bindBubble();
+    bindPanelDrag();
+    bindDrop();
+  }
+
+  $('#btn-overview').addEventListener('click', () => window.today.openOverview());
 
   $('#btn-today').addEventListener('click', () => {
     const date = new Date();

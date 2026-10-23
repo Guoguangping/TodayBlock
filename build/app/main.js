@@ -78,6 +78,7 @@ bootLog(`start argv=${JSON.stringify(process.argv)} cwd=${process.cwd()} package
 
 let win = null;
 let bubbleWin = null;
+let overviewWin = null;
 let tray = null;
 let store = null;
 let quitting = false;
@@ -324,6 +325,7 @@ function defaultSettings() {
     demoSeeded: false,
     anchor: null,
     panelAnchor: null,
+    overviewBounds: null,
     ai: {
       baseUrl: 'https://api.deepseek.com/v1',
       model: 'deepseek-chat',
@@ -345,6 +347,18 @@ function mergeSettings(raw) {
       : null,
     panelAnchor: raw.panelAnchor && Number.isFinite(raw.panelAnchor.x) && Number.isFinite(raw.panelAnchor.y)
       ? { x: Math.round(raw.panelAnchor.x), y: Math.round(raw.panelAnchor.y) }
+      : null,
+    overviewBounds: raw.overviewBounds
+      && Number.isFinite(raw.overviewBounds.x)
+      && Number.isFinite(raw.overviewBounds.y)
+      && Number.isFinite(raw.overviewBounds.width)
+      && Number.isFinite(raw.overviewBounds.height)
+      ? {
+        x: Math.round(raw.overviewBounds.x),
+        y: Math.round(raw.overviewBounds.y),
+        width: Math.round(raw.overviewBounds.width),
+        height: Math.round(raw.overviewBounds.height)
+      }
       : null
   };
 }
@@ -473,10 +487,10 @@ function publicSettings() {
 function getSnapshot() {
   const today = localDate();
   const todayPending = store.tasks.filter(
-    (task) => task.status === 'todo' && task.dueDate === today
+    (task) => task.status !== 'done' && task.dueDate === today
   );
   const overdue = store.tasks.filter(
-    (task) => task.status === 'todo' && task.dueDate && task.dueDate < today
+    (task) => task.status !== 'done' && task.dueDate && task.dueDate < today
   );
   const doneToday = store.tasks.filter(
     (task) => task.status === 'done' && task.completedAt && localDate(new Date(task.completedAt)) === today
@@ -723,6 +737,176 @@ function createPanelWindow() {
   if (IS_DEV) win.webContents.openDevTools({ mode: 'detach' });
 }
 
+function exportStatusLabel(status) {
+  if (status === 'done') return '已完成';
+  if (status === 'doing') return '进行中';
+  return '待处理';
+}
+
+function exportPriorityLabel(priority) {
+  return ({ 3: '高', 2: '中', 1: '低' })[priority] || '无';
+}
+
+function exportDateTime(value) {
+  if (!value) return '';
+  const date = new Date(value);
+  if (Number.isNaN(date.getTime())) return String(value);
+  return date.toLocaleString('zh-CN', { hour12: false });
+}
+
+function taskExportRow(task) {
+  return {
+    '标题': task.title || '',
+    '归属项目': task.project || '',
+    '状态': exportStatusLabel(task.status),
+    '截止日期': task.dueDate || '',
+    '时间': task.dueTime || '',
+    '优先级': exportPriorityLabel(task.priority),
+    '完成情况': task.completion || '',
+    '备注': task.notes || '',
+    '来源文件': task.sourceName || '',
+    '创建时间': exportDateTime(task.createdAt),
+    '完成时间': exportDateTime(task.completedAt)
+  };
+}
+
+async function exportTasks({ format = 'xlsx', ids = null } = {}) {
+  const idSet = Array.isArray(ids) ? new Set(ids) : null;
+  const tasks = store.tasks.filter((task) => !idSet || idSet.has(task.id));
+  if (!tasks.length) throw new Error('没有可导出的任务');
+
+  const ext = format === 'csv' ? 'csv' : format === 'json' ? 'json' : 'xlsx';
+  const stamp = localDate();
+  const defaultPath = path.join(
+    app.getPath('documents'),
+    `TodayBlock_任务_${stamp}.${ext}`
+  );
+  const filters = ext === 'csv'
+    ? [{ name: 'CSV', extensions: ['csv'] }]
+    : ext === 'json'
+      ? [{ name: 'JSON', extensions: ['json'] }]
+      : [{ name: 'Excel', extensions: ['xlsx'] }];
+  const parent = overviewWin && !overviewWin.isDestroyed() ? overviewWin : win;
+  const result = parent
+    ? await dialog.showSaveDialog(parent, { title: '导出任务', defaultPath, filters })
+    : await dialog.showSaveDialog({ title: '导出任务', defaultPath, filters });
+  if (result.canceled || !result.filePath) return { ok: false, canceled: true };
+
+  if (format === 'json') {
+    await fsp.writeFile(result.filePath, `${JSON.stringify(tasks, null, 2)}\n`, 'utf8');
+  } else {
+    const rows = tasks.map(taskExportRow);
+    if (format === 'csv') {
+      const header = Object.keys(rows[0]);
+      const escape = (value) => `"${String(value ?? '').replace(/"/g, '""')}"`;
+      const csv = [
+        header.map(escape).join(','),
+        ...rows.map((row) => header.map((key) => escape(row[key])).join(','))
+      ].join('\r\n');
+      await fsp.writeFile(result.filePath, `\ufeff${csv}\r\n`, 'utf8');
+    } else {
+      const XLSX = require('xlsx');
+      const sheet = XLSX.utils.json_to_sheet(rows);
+      sheet['!cols'] = Object.keys(rows[0]).map((key) => ({
+        wch: Math.min(50, Math.max(12, String(key).length * 2 + 4))
+      }));
+      const workbook = XLSX.utils.book_new();
+      XLSX.utils.book_append_sheet(workbook, sheet, '任务');
+      const buffer = XLSX.write(workbook, { type: 'buffer', bookType: 'xlsx' });
+      await fsp.writeFile(result.filePath, buffer);
+    }
+  }
+  return { ok: true, path: result.filePath, count: tasks.length };
+}
+
+function createOverviewWindow() {
+  const wa = screen.getPrimaryDisplay().workArea;
+  const width = Math.min(1180, wa.width - 48);
+  const height = Math.min(760, wa.height - 48);
+  const saved = store.settings.overviewBounds;
+  let placement = { width, height, center: true };
+  if (saved) {
+    const savedWidth = Math.min(Math.max(900, saved.width), width);
+    const savedHeight = Math.min(Math.max(600, saved.height), height);
+    placement = {
+      ...clampWindowPosition(
+        { x: saved.x, y: saved.y },
+        { width: savedWidth, height: savedHeight }
+      ),
+      width: savedWidth,
+      height: savedHeight,
+      center: false
+    };
+  }
+  overviewWin = new BrowserWindow({
+    ...placement,
+    minWidth: Math.min(900, width),
+    minHeight: Math.min(600, height),
+    show: false,
+    frame: true,
+    resizable: true,
+    maximizable: true,
+    minimizable: true,
+    skipTaskbar: false,
+    alwaysOnTop: false,
+    backgroundColor: '#0d1117',
+    title: 'TodayBlock · 全览',
+    icon: path.join(ASSETS_DIR, 'icon.png'),
+    autoHideMenuBar: true,
+    webPreferences: {
+      preload: path.join(APP_DIR, 'preload.js'),
+      contextIsolation: true,
+      nodeIntegration: false,
+      sandbox: false,
+      spellcheck: false
+    }
+  });
+  overviewWin.setMenuBarVisibility(false);
+  if (UI_SCALE !== 1) overviewWin.webContents.setZoomFactor(UI_SCALE);
+  overviewWin.loadFile(path.join(APP_DIR, 'src', 'index.html'), { query: { view: 'overview' } })
+    .catch((error) => bootLog(`overview loadFile failed ${error.message}`));
+  wireWindowDiagnostics(overviewWin, 'overview');
+  overviewWin.once('ready-to-show', () => {
+    bootLog('overview ready-to-show');
+    overviewWin.show();
+    overviewWin.focus();
+  });
+  overviewWin.on('close', () => {
+    if (quitting || !overviewWin || overviewWin.isDestroyed()) return;
+    try {
+      const bounds = overviewWin.getBounds();
+      store.settings.overviewBounds = {
+        x: bounds.x,
+        y: bounds.y,
+        width: bounds.width,
+        height: bounds.height
+      };
+      saveStore();
+    } catch (error) {
+      safeError('Overview bounds save failed:', error.message);
+    }
+  });
+  overviewWin.on('closed', () => {
+    bootLog('overview closed');
+    overviewWin = null;
+    if (win && !win.isDestroyed()) {
+      win.setAlwaysOnTop(Boolean(store.settings.alwaysOnTop), 'floating');
+    }
+  });
+}
+
+function openOverview() {
+  if (overviewWin && !overviewWin.isDestroyed()) {
+    if (overviewWin.isMinimized()) overviewWin.restore();
+    overviewWin.show();
+    overviewWin.focus();
+    return true;
+  }
+  if (win && !win.isDestroyed()) win.setAlwaysOnTop(false);
+  createOverviewWindow();
+  return true;
+}
+
 function createWindow() {
   updateUiMetrics();
   if (!bubbleWin) createBubbleWindow();
@@ -924,6 +1108,15 @@ async function captureScreenshots() {
   image = await win.webContents.capturePage();
   fs.writeFileSync(path.join(shots, 'panel.png'), image.toPNG());
 
+  await win.webContents.executeJavaScript("document.querySelector('#btn-overview').click()");
+  await new Promise((resolve) => setTimeout(resolve, 900));
+  if (overviewWin && !overviewWin.isDestroyed()) {
+    image = await overviewWin.webContents.capturePage();
+    fs.writeFileSync(path.join(shots, 'overview.png'), image.toPNG());
+    overviewWin.close();
+    await new Promise((resolve) => setTimeout(resolve, 300));
+  }
+
   await win.webContents.executeJavaScript('window.__todayApp.openSettings()');
   await new Promise((resolve) => setTimeout(resolve, 500));
   image = await win.webContents.capturePage();
@@ -938,6 +1131,17 @@ async function captureScreenshots() {
   await new Promise((resolve) => setTimeout(resolve, 500));
   image = await win.webContents.capturePage();
   fs.writeFileSync(path.join(shots, 'text-ai.png'), image.toPNG());
+
+  await win.webContents.executeJavaScript(`
+    (() => {
+      window.__todayApp.closeModal();
+      const task = window.__todayApp.state.tasks[0];
+      if (task) window.__todayApp.openDetail(task.id);
+    })()
+  `);
+  await new Promise((resolve) => setTimeout(resolve, 500));
+  image = await win.webContents.capturePage();
+  fs.writeFileSync(path.join(shots, 'detail.png'), image.toPNG());
 
   safeLog(`Screenshots saved to ${shots}`);
   quitApp();
@@ -992,7 +1196,7 @@ function quitApp() {
   quitting = true;
   if (reminderTimer) clearInterval(reminderTimer);
   globalShortcut.unregisterAll();
-  for (const target of [win, bubbleWin]) {
+  for (const target of [win, bubbleWin, overviewWin]) {
     if (target && !target.isDestroyed()) {
       target.removeAllListeners('close');
       target.destroy();
@@ -1063,10 +1267,10 @@ function checkReminders() {
 
   if (time >= '09:00' && store.settings.lastDigestDate !== today) {
     const todayPending = store.tasks.filter(
-      (task) => task.status === 'todo' && task.dueDate === today && !task.demo
+      (task) => task.status !== 'done' && task.dueDate === today && !task.demo
     );
     const overdue = store.tasks.filter(
-      (task) => task.status === 'todo' && task.dueDate && task.dueDate < today && !task.demo
+      (task) => task.status !== 'done' && task.dueDate && task.dueDate < today && !task.demo
     );
     if (todayPending.length || overdue.length) {
       notify(
@@ -1081,7 +1285,7 @@ function checkReminders() {
   }
 
   for (const task of store.tasks) {
-    if (task.status !== 'todo' || task.demo || !task.dueDate) continue;
+    if (task.status === 'done' || task.demo || !task.dueDate) continue;
     if (task.dueDate < today) {
       const key = `overdue:${today}`;
       if (task.reminders?.overdue !== key) {
@@ -1636,9 +1840,10 @@ function updateTask(id, patch) {
   }
   if (patch.priority !== undefined) task.priority = Math.round(clamp(patch.priority, 0, 3));
   if (patch.status !== undefined) {
-    task.status = patch.status === 'done' ? 'done' : 'todo';
-    task.completedAt = task.status === 'done' ? new Date().toISOString() : null;
-    if (task.status === 'todo') task.reminders = {};
+    const status = ['todo', 'doing', 'done'].includes(patch.status) ? patch.status : 'todo';
+    task.status = status;
+    task.completedAt = status === 'done' ? new Date().toISOString() : null;
+    if (status === 'todo') task.reminders = {};
   }
   task.updatedAt = new Date().toISOString();
   return task;
@@ -1650,6 +1855,8 @@ function updateTask(id, patch) {
 
 function registerIpc() {
   ipcMain.handle('app:get-state', () => getSnapshot());
+  ipcMain.handle('overview:open', () => openOverview());
+  ipcMain.handle('overview:export', (_event, options) => exportTasks(options || {}));
 
   ipcMain.handle('task:create', (_event, input) => {
     const task = createTask(input);
@@ -1681,6 +1888,30 @@ function registerIpc() {
     saveStore();
     broadcast();
     return true;
+  });
+
+  ipcMain.handle('task:bulk-update', (_event, ids, patch) => {
+    const wanted = new Set((Array.isArray(ids) ? ids : []).slice(0, 500));
+    if (!wanted.size) throw new Error('没有选中的任务');
+    const updated = [];
+    for (const task of store.tasks) {
+      if (!wanted.has(task.id)) continue;
+      updated.push(updateTask(task.id, patch || {}));
+    }
+    saveStore();
+    broadcast();
+    return updated;
+  });
+
+  ipcMain.handle('task:bulk-delete', (_event, ids) => {
+    const wanted = new Set((Array.isArray(ids) ? ids : []).slice(0, 500));
+    if (!wanted.size) throw new Error('没有选中的任务');
+    const before = store.tasks.length;
+    store.tasks = store.tasks.filter((task) => !wanted.has(task.id));
+    if (store.tasks.length === before) throw new Error('任务不存在');
+    saveStore();
+    broadcast();
+    return before - store.tasks.length;
   });
 
   ipcMain.handle('task:bulk-create', async (_event, payload) => {

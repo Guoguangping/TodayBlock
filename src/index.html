@@ -36,6 +36,7 @@
           </span>
         </div>
         <div class="header-actions">
+          <button id="btn-overview" class="ghost-button" type="button">全览</button>
           <button id="btn-today" class="ghost-button" type="button">今天</button>
           <button id="btn-settings" class="icon-button" type="button" aria-label="设置">
             <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 15.5a3.5 3.5 0 1 0 0-7 3.5 3.5 0 0 0 0 7Z"></path><path d="M19.4 15a1.7 1.7 0 0 0 .34 1.88l.06.06-1.8 1.8-.06-.06a1.7 1.7 0 0 0-1.88-.34 1.7 1.7 0 0 0-1.03 1.56V20h-2.54v-.1a1.7 1.7 0 0 0-1.03-1.56 1.7 1.7 0 0 0-1.88.34l-.06.06-1.8-1.8.06-.06A1.7 1.7 0 0 0 9.12 15a1.7 1.7 0 0 0-1.56-1.03H7.4v-2.54h.16A1.7 1.7 0 0 0 9.12 10a1.7 1.7 0 0 0-.34-1.88l-.06-.06 1.8-1.8.06.06a1.7 1.7 0 0 0 1.88.34 1.7 1.7 0 0 0 1.03-1.56V5h2.54v.1a1.7 1.7 0 0 0 1.03 1.56 1.7 1.7 0 0 0 1.88-.34l.06-.06 1.8 1.8-.06.06A1.7 1.7 0 0 0 19.4 10a1.7 1.7 0 0 0 1.56 1.03H21v2.54h-.04A1.7 1.7 0 0 0 19.4 15Z"></path></svg>
@@ -98,9 +99,58 @@
         <span>提取文字 → 识别任务 → 生成预览</span>
       </div>
 
-      <div id="modal-root"></div>
-      <div id="toast-root" class="toast-root" aria-live="polite"></div>
     </section>
+
+    <section id="overview" class="overview" tabindex="-1" aria-label="任务全览">
+      <header class="ov-header">
+        <div class="ov-title">
+          <span class="ov-kicker">ALL TASKS</span>
+          <strong>任务全览</strong>
+          <span id="ov-summary" class="ov-summary"></span>
+        </div>
+        <div class="ov-tools">
+          <input id="ov-search" class="ov-search" type="search" placeholder="搜索任务、项目、备注…" aria-label="搜索任务">
+          <select id="ov-project" class="ov-select" aria-label="按项目筛选">
+            <option value="">全部项目</option>
+          </select>
+          <select id="ov-status" class="ov-select" aria-label="按状态筛选">
+            <option value="all">全部状态</option>
+            <option value="todo">待处理</option>
+            <option value="doing">进行中</option>
+            <option value="done">已完成</option>
+          </select>
+          <label class="ov-overdue"><input id="ov-overdue" type="checkbox">只看逾期</label>
+          <div class="ov-export-wrap">
+            <button id="ov-export" class="ov-button primary" type="button">导出</button>
+            <div id="ov-export-menu" class="ov-export-menu" hidden>
+              <button type="button" data-export-format="csv" data-export-scope="filtered">当前筛选 · CSV</button>
+              <button type="button" data-export-format="xlsx" data-export-scope="filtered">当前筛选 · Excel</button>
+              <button type="button" data-export-format="xlsx" data-export-scope="all">全部任务 · Excel</button>
+              <button type="button" data-export-format="json" data-export-scope="all">全部任务 · JSON</button>
+            </div>
+          </div>
+        </div>
+      </header>
+
+      <div id="ov-selection" class="ov-selection" hidden>
+        <strong><span id="ov-selected-count">0</span> 项已选</strong>
+        <button class="ov-button" type="button" data-bulk="done">标记完成</button>
+        <button class="ov-button" type="button" data-bulk="reopen">重新打开</button>
+        <button class="ov-button" type="button" data-bulk="project">改项目</button>
+        <button class="ov-button danger" type="button" data-bulk="delete">删除</button>
+        <button class="ov-button" type="button" data-bulk="export">导出所选</button>
+        <button class="ov-link" type="button" data-bulk="clear">取消选择</button>
+      </div>
+
+      <div id="ov-board" class="ov-board"></div>
+      <div id="ov-empty" class="ov-empty" hidden>
+        <strong>没有符合条件的任务</strong>
+        <span>调整搜索或筛选条件试试。</span>
+      </div>
+    </section>
+
+    <div id="modal-root"></div>
+    <div id="toast-root" class="toast-root" aria-live="polite"></div>
   </div>
 
   <script src="app.js"></script>
