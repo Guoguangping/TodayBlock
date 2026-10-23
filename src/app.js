@@ -1066,10 +1066,6 @@ function detailHtml(task) {
             ${projectHistory().map((project) => `<option value="${escapeAttr(project)}"></option>`).join('')}
           </datalist>
         </div>
-        <div class="field">
-          <label for="detail-status">状态</label>
-          <select id="detail-status" name="status">${statusOptions(task.status)}</select>
-        </div>
         <div class="field-row">
           <div class="field">
             <label for="detail-date">日期</label>
@@ -1080,9 +1076,15 @@ function detailHtml(task) {
             <input id="detail-time" name="dueTime" type="time" value="${escapeAttr(task.dueTime || '')}">
           </div>
         </div>
-        <div class="field">
-          <label for="detail-priority">优先级</label>
-          <select id="detail-priority" name="priority">${priorityOptions(task.priority)}</select>
+        <div class="field-row">
+          <div class="field">
+            <label for="detail-status">状态</label>
+            <select id="detail-status" name="status">${statusOptions(task.status)}</select>
+          </div>
+          <div class="field">
+            <label for="detail-priority">优先级</label>
+            <select id="detail-priority" name="priority">${priorityOptions(task.priority)}</select>
+          </div>
         </div>
         <div class="field">
           <label for="detail-notes">备注</label>
