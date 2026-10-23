@@ -1,0 +1,14 @@
+{
+  "name": "today-block",
+  "version": "0.1.0",
+  "private": true,
+  "description": "TodayBlock desktop assistant",
+  "main": "main.js",
+  "author": "TodayBlock",
+  "license": "MIT",
+  "dependencies": {
+    "mammoth": "^1.13.0",
+    "pdf-parse": "^1.1.1",
+    "xlsx": "0.18.5"
+  }
+}

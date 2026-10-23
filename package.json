@@ -1,0 +1,26 @@
+{
+  "name": "today-block",
+  "version": "0.1.0",
+  "private": true,
+  "description": "A quiet Windows desktop work assistant: today count, calendar, and file-to-task AI.",
+  "main": "main.js",
+  "author": "TodayBlock",
+  "license": "MIT",
+  "scripts": {
+    "start": "node scripts/start.js",
+    "dev": "node scripts/start.js --dev",
+    "screenshot": "node scripts/start.js --screenshot",
+    "smoke": "node scripts/start.js --smoke --no-sandbox",
+    "package": "node scripts/package-portable.js"
+  },
+  "dependencies": {
+    "mammoth": "^1.13.0",
+    "pdf-parse": "^1.1.1",
+    "xlsx": "0.18.5"
+  },
+  "devDependencies": {
+    "electron": "^45.0.0",
+    "pe-library": "^2.0.1",
+    "resedit": "^3.1.0"
+  }
+}

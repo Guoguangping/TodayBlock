@@ -1,0 +1,108 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta http-equiv="Content-Security-Policy" content="default-src 'self'; img-src 'self' data:; style-src 'self' 'unsafe-inline'; script-src 'self';">
+  <title>TodayBlock</title>
+  <link rel="stylesheet" href="styles.css">
+</head>
+<body>
+  <div id="app" class="app collapsed" data-theme="dark">
+    <button id="bubble" class="bubble" type="button" aria-label="打开 TodayBlock 日历">
+      <span class="bubble-halo" aria-hidden="true"></span>
+      <span class="bubble-face">
+        <svg class="bubble-edge" viewBox="0 0 72 72" aria-hidden="true">
+          <path class="bubble-track" pathLength="100" d="M 36 1.7 H 50 A 20.3 20.3 0 0 1 70.3 22 V 50 A 20.3 20.3 0 0 1 50 70.3 H 22 A 20.3 20.3 0 0 1 1.7 50 V 22 A 20.3 20.3 0 0 1 22 1.7 H 36"></path>
+          <path id="bubble-arc" class="bubble-arc" pathLength="100" d="M 36 1.7 H 50 A 20.3 20.3 0 0 1 70.3 22 V 50 A 20.3 20.3 0 0 1 50 70.3 H 22 A 20.3 20.3 0 0 1 1.7 50 V 22 A 20.3 20.3 0 0 1 22 1.7 H 36"></path>
+          <path class="bubble-glint" pathLength="100" d="M 36 1.7 H 50 A 20.3 20.3 0 0 1 70.3 22 V 50 A 20.3 20.3 0 0 1 50 70.3 H 22 A 20.3 20.3 0 0 1 1.7 50 V 22 A 20.3 20.3 0 0 1 22 1.7 H 36"></path>
+        </svg>
+        <span class="bubble-content">
+          <span id="bubble-count" class="bubble-count">0</span>
+        </span>
+      </span>
+      <span id="bubble-overdue" class="bubble-overdue" hidden></span>
+    </button>
+
+    <section id="panel" class="panel" tabindex="-1" aria-label="工作日历">
+      <header class="panel-header">
+        <div class="brand">
+          <span class="brand-mark">
+            <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M5 12.5l4 4L19 6.8"></path></svg>
+          </span>
+          <span class="brand-copy">
+            <strong>TodayBlock</strong>
+            <span id="header-summary">今日安排</span>
+          </span>
+        </div>
+        <div class="header-actions">
+          <button id="btn-today" class="ghost-button" type="button">今天</button>
+          <button id="btn-settings" class="icon-button" type="button" aria-label="设置">
+            <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 15.5a3.5 3.5 0 1 0 0-7 3.5 3.5 0 0 0 0 7Z"></path><path d="M19.4 15a1.7 1.7 0 0 0 .34 1.88l.06.06-1.8 1.8-.06-.06a1.7 1.7 0 0 0-1.88-.34 1.7 1.7 0 0 0-1.03 1.56V20h-2.54v-.1a1.7 1.7 0 0 0-1.03-1.56 1.7 1.7 0 0 0-1.88.34l-.06.06-1.8-1.8.06-.06A1.7 1.7 0 0 0 9.12 15a1.7 1.7 0 0 0-1.56-1.03H7.4v-2.54h.16A1.7 1.7 0 0 0 9.12 10a1.7 1.7 0 0 0-.34-1.88l-.06-.06 1.8-1.8.06.06a1.7 1.7 0 0 0 1.88.34 1.7 1.7 0 0 0 1.03-1.56V5h2.54v.1a1.7 1.7 0 0 0 1.03 1.56 1.7 1.7 0 0 0 1.88-.34l.06-.06 1.8 1.8-.06.06A1.7 1.7 0 0 0 19.4 10a1.7 1.7 0 0 0 1.56 1.03H21v2.54h-.04A1.7 1.7 0 0 0 19.4 15Z"></path></svg>
+          </button>
+          <button id="btn-close" class="icon-button" type="button" aria-label="收起">
+            <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M6 6l12 12M18 6L6 18"></path></svg>
+          </button>
+        </div>
+      </header>
+
+      <div class="month-row">
+        <button id="prev-month" class="month-arrow" type="button" aria-label="上个月">‹</button>
+        <div class="month-title">
+          <strong id="month-label">2026年10月</strong>
+          <span id="month-summary">本月 0 项</span>
+        </div>
+        <button id="next-month" class="month-arrow" type="button" aria-label="下个月">›</button>
+      </div>
+
+      <div class="weekdays" aria-hidden="true">
+        <span>一</span><span>二</span><span>三</span><span>四</span><span>五</span><span>六</span><span>日</span>
+      </div>
+      <div id="calendar" class="calendar" role="grid" aria-label="月历"></div>
+
+      <div class="day-section">
+        <div class="day-head">
+          <div>
+            <strong id="selected-date-label">今天</strong>
+            <span id="day-count" class="day-count"></span>
+          </div>
+          <span class="drag-hint">拖文件进来 → AI 拆任务</span>
+        </div>
+        <div id="task-list" class="task-list"></div>
+      </div>
+
+      <form id="quick-add" class="quick-add" autocomplete="off">
+        <input id="quick-title" class="quick-title" type="text" maxlength="120" placeholder="添加任务，回车保存…" aria-label="任务标题">
+        <input id="quick-date" class="quick-date" type="date" aria-label="任务日期">
+        <button id="btn-text-ai" class="quick-ai" type="button" title="粘贴文字，让 AI 拆任务" aria-label="粘贴文字，让 AI 拆任务">
+          <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 3l1.7 5.3L19 10l-5.3 1.7L12 17l-1.7-5.3L5 10l5.3-1.7z"></path><path d="M19 16l.8 2.2L22 19l-2.2.8L19 22l-.8-2.2L16 19l2.2-.8z"></path></svg>
+        </button>
+        <button class="quick-submit" type="submit" aria-label="添加任务">
+          <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 5v14M5 12h14"></path></svg>
+        </button>
+      </form>
+
+      <div id="drop-overlay" class="drop-overlay" hidden>
+        <div class="drop-card">
+          <span class="drop-icon">
+            <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 16V4m0 0L7 9m5-5l5 5"></path><path d="M4 16v2a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2v-2"></path></svg>
+          </span>
+          <strong>松开，AI 帮你拆任务</strong>
+          <span>支持 PDF / DOCX / XLSX / XLS / TXT / MD，最多 5 个文件</span>
+        </div>
+      </div>
+
+      <div id="busy-overlay" class="busy-overlay" hidden>
+        <div class="spinner"></div>
+        <strong>正在读取文件…</strong>
+        <span>提取文字 → 识别任务 → 生成预览</span>
+      </div>
+
+      <div id="modal-root"></div>
+      <div id="toast-root" class="toast-root" aria-live="polite"></div>
+    </section>
+  </div>
+
+  <script src="app.js"></script>
+</body>
+</html>
