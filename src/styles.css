@@ -132,7 +132,7 @@ html[data-view="overview"] .app {
 .bubble-halo {
   position: absolute;
   inset: 14px;
-  border-radius: 24px;
+  border-radius: 20px;
   background: var(--accent);
   filter: blur(8px);
   opacity: 0.2;
@@ -146,7 +146,7 @@ html[data-view="overview"] .app {
   left: 8px;
   width: 72px;
   height: 72px;
-  border-radius: 22px;
+  border-radius: 18px;
   overflow: hidden;
   background:
     radial-gradient(120% 80% at 24% 0%, color-mix(in srgb, var(--accent) 32%, transparent), transparent 58%),
@@ -418,7 +418,7 @@ html[data-view="bubble"] .bubble.is-docked.dock-right .bubble-strip {
   right: 0;
   width: 24px;
   height: 72px;
-  border-radius: 10px 0 0 10px;
+  border-radius: 8px 0 0 8px;
 }
 
 html[data-view="bubble"] .bubble.is-docked.dock-left .bubble-strip {
@@ -427,7 +427,7 @@ html[data-view="bubble"] .bubble.is-docked.dock-left .bubble-strip {
   left: 0;
   width: 24px;
   height: 72px;
-  border-radius: 0 10px 10px 0;
+  border-radius: 0 8px 8px 0;
 }
 
 html[data-view="bubble"] .bubble.is-docked.dock-top .bubble-strip {
@@ -436,7 +436,7 @@ html[data-view="bubble"] .bubble.is-docked.dock-top .bubble-strip {
   left: 8px;
   width: 72px;
   height: 24px;
-  border-radius: 0 0 10px 10px;
+  border-radius: 0 0 8px 8px;
 }
 
 html[data-view="bubble"] .bubble.is-docked.dock-top .bubble-strip-fill {
