@@ -19,6 +19,13 @@ const path = require('node:path');
 const fs = require('node:fs');
 const fsp = fs.promises;
 const crypto = require('node:crypto');
+const {
+  EDGE_DOCK_THRESHOLD,
+  nearestScreenEdge,
+  stripBounds,
+  anchorFromStrip,
+  normalizeIdleFadeMs
+} = require('./lib/bubble-presence');
 
 const IS_DEV = process.argv.includes('--dev');
 const IS_PACKAGED = app.isPackaged;
@@ -141,6 +148,8 @@ let quitting = false;
 let expanded = false;
 let reminderTimer = null;
 let dragState = null;
+// 贴边时窗口被裁成细条，逻辑位置仍留在 anchor，不把细条矩形写进设置
+let bubbleDockedEdge = null;
 let lastAnchor = null;
 let lastPanelAnchor = null;
 let screenshotBusy = false;
@@ -310,7 +319,9 @@ function updateUiMetrics() {
 }
 
 function applyUiScale() {
-  const oldBubble = bubbleWin && !bubbleWin.isDestroyed() ? bubbleWin.getBounds() : null;
+  // 贴边时当前矩形是细条，不能拿它反推锚点
+  const docking = bubbleDockedEdge;
+  const oldBubble = !docking && bubbleWin && !bubbleWin.isDestroyed() ? bubbleWin.getBounds() : null;
   updateUiMetrics();
 
   if (oldBubble) {
@@ -319,8 +330,27 @@ function applyUiScale() {
       y: oldBubble.y
     });
     store.settings.anchor = lastAnchor;
+  } else if (docking && lastAnchor) {
+    lastAnchor = clampAnchor(lastAnchor);
+    store.settings.anchor = lastAnchor;
+  }
+
+  if (bubbleWin && !bubbleWin.isDestroyed()) {
     bubbleWin.webContents.setZoomFactor(UI_SCALE);
-    bubbleWin.setBounds(collapsedBounds(), false);
+    if (docking && store.settings.edgeDock !== false && store.settings.idleFade !== false) {
+      const edge = logicalBubbleEdge();
+      if (edge) {
+        bubbleDockedEdge = edge;
+        bubbleWin.setBounds(stripBounds(collapsedBounds(), edge, UI_SCALE), false);
+      } else {
+        bubbleDockedEdge = null;
+        bubbleWin.setBounds(collapsedBounds(), false);
+      }
+    } else {
+      bubbleDockedEdge = null;
+      bubbleWin.setBounds(collapsedBounds(), false);
+    }
+    publishBubbleEdge();
   }
 
   if (win && !win.isDestroyed()) {
@@ -377,6 +407,10 @@ function defaultSettings() {
     theme: 'dark',
     uiScale: 'auto',
     alwaysOnTop: true,
+    // 鼠标离开后淡出；靠近左/右/上边缘时再收成细条。默认都打开。
+    idleFade: true,
+    idleFadeMs: 4000,
+    edgeDock: true,
     autoStart: false,
     notifications: true,
     pauseUntil: 0,
@@ -398,7 +432,7 @@ function defaultSettings() {
 function mergeSettings(raw) {
   const base = defaultSettings();
   if (!raw || typeof raw !== 'object') return base;
-  return {
+  const merged = {
     ...base,
     ...raw,
     ai: { ...base.ai, ...(raw.ai || {}) },
@@ -421,6 +455,10 @@ function mergeSettings(raw) {
       }
       : null
   };
+  merged.idleFade = raw.idleFade !== false;
+  merged.edgeDock = raw.edgeDock !== false;
+  merged.idleFadeMs = normalizeIdleFadeMs(raw.idleFadeMs);
+  return merged;
 }
 
 function seedDemo() {
@@ -717,20 +755,106 @@ function collapsedBounds() {
   };
 }
 
+function displayWorkArea(bounds) {
+  try {
+    return screen.getDisplayMatching(bounds).workArea;
+  } catch {
+    return screen.getPrimaryDisplay().workArea;
+  }
+}
+
+/** 用逻辑锚点（完整气泡）判断边缘，贴边期间不能拿细条矩形来算。 */
+function logicalBubbleEdge() {
+  if (!bubbleWin || bubbleWin.isDestroyed()) return null;
+  const full = collapsedBounds();
+  return nearestScreenEdge(full, displayWorkArea(full), EDGE_DOCK_THRESHOLD);
+}
+
+function publishBubbleEdge() {
+  if (!bubbleWin || bubbleWin.isDestroyed()) return;
+  bubbleWin.webContents.send('bubble:edge', {
+    edge: logicalBubbleEdge(),
+    docked: Boolean(bubbleDockedEdge)
+  });
+}
+
+function undockBubbleWindow() {
+  if (!bubbleWin || bubbleWin.isDestroyed()) return { edge: null, docked: false, restored: false };
+  const wasDocked = Boolean(bubbleDockedEdge);
+  bubbleDockedEdge = null;
+  if (wasDocked) bubbleWin.setBounds(collapsedBounds(), false);
+  return { edge: logicalBubbleEdge(), docked: false, restored: wasDocked };
+}
+
+function dockBubbleWindow() {
+  if (!bubbleWin || bubbleWin.isDestroyed()) return { edge: null, docked: false };
+  if (dragState && dragState.target === bubbleWin) return { edge: null, docked: false };
+  if (store.settings.idleFade === false || store.settings.edgeDock === false) {
+    return { edge: logicalBubbleEdge(), docked: false };
+  }
+  const full = collapsedBounds();
+  const edge = nearestScreenEdge(full, displayWorkArea(full), EDGE_DOCK_THRESHOLD);
+  if (!edge) {
+    if (bubbleDockedEdge) undockBubbleWindow();
+    return { edge: null, docked: false };
+  }
+  bubbleDockedEdge = edge;
+  bubbleWin.setBounds(stripBounds(full, edge, UI_SCALE), false);
+  return { edge, docked: true };
+}
+
+function relayoutDockedBubble() {
+  if (!bubbleWin || bubbleWin.isDestroyed()) return;
+  if (!bubbleDockedEdge) {
+    publishBubbleEdge();
+    return;
+  }
+  const edge = logicalBubbleEdge();
+  if (!edge || store.settings.edgeDock === false || store.settings.idleFade === false) {
+    undockBubbleWindow();
+    publishBubbleEdge();
+    return;
+  }
+  bubbleDockedEdge = edge;
+  bubbleWin.setBounds(stripBounds(collapsedBounds(), edge, UI_SCALE), false);
+  publishBubbleEdge();
+}
+
+/** 拖动结束时若还是细条，折回完整锚点，避免 anchor 被写成 12px 宽。 */
+function anchorFromDraggedBubble(bounds) {
+  if (!bounds) return clampAnchor(currentAnchor());
+  if (bounds.width === COLLAPSED.width && bounds.height === COLLAPSED.height) {
+    return clampAnchor({ x: bounds.x, y: bounds.y });
+  }
+  let edge = bubbleDockedEdge;
+  if (edge !== 'left' && edge !== 'right' && edge !== 'top') {
+    if (bounds.height < bounds.width) {
+      edge = 'top';
+    } else {
+      const area = displayWorkArea(bounds);
+      edge = bounds.x <= area.x + area.width / 2 ? 'left' : 'right';
+    }
+  }
+  return clampAnchor(anchorFromStrip(bounds, COLLAPSED, edge, UI_SCALE));
+}
+
 function setExpanded(next) {
   expanded = Boolean(next);
-  if (!win || win.isDestroyed()) return;
-
-  if (expanded) {
-    win.setBounds(expandedBounds(), false);
-    win.setAlwaysOnTop(Boolean(store.settings.alwaysOnTop), 'floating');
-    win.show();
-    win.focus();
-  } else {
-    win.hide();
-    if (bubbleWin && !bubbleWin.isDestroyed()) bubbleWin.show();
+  if (win && !win.isDestroyed()) {
+    if (expanded) {
+      win.setBounds(expandedBounds(), false);
+      win.setAlwaysOnTop(Boolean(store.settings.alwaysOnTop), 'floating');
+      win.show();
+      win.focus();
+    } else {
+      win.hide();
+      if (bubbleWin && !bubbleWin.isDestroyed()) bubbleWin.show();
+    }
   }
-  win.webContents.send('ui:expanded', expanded);
+  // 面板和悬浮块都收到展开状态。悬浮块用来取消空闲淡出 / 贴边。
+  for (const target of [win, bubbleWin]) {
+    if (target && !target.isDestroyed()) target.webContents.send('ui:expanded', expanded);
+  }
 }
 
 function showWindow(expand = false) {
@@ -807,6 +931,11 @@ function createBubbleWindow() {
   bubbleWin.on('closed', () => {
     bootLog('bubble window closed');
     bubbleWin = null;
+    bubbleDockedEdge = null;
+  });
+
+  bubbleWin.webContents.on('did-finish-load', () => {
+    publishBubbleEdge();
   });
 }
 
@@ -2158,6 +2287,14 @@ function registerIpc() {
       if (patch.notifications) store.settings.pauseUntil = 0;
     }
     if (typeof patch.autoStart === 'boolean') setAutoStart(patch.autoStart);
+    if (typeof patch.idleFade === 'boolean') store.settings.idleFade = patch.idleFade;
+    if (typeof patch.edgeDock === 'boolean') store.settings.edgeDock = patch.edgeDock;
+    if (patch.idleFadeMs != null && patch.idleFadeMs !== '') {
+      store.settings.idleFadeMs = normalizeIdleFadeMs(patch.idleFadeMs);
+    }
+    if (bubbleDockedEdge && (store.settings.idleFade === false || store.settings.edgeDock === false)) {
+      undockBubbleWindow();
+    }
 
     if (patch.ai && typeof patch.ai === 'object') {
       if (typeof patch.ai.baseUrl === 'string') {
@@ -2182,12 +2319,15 @@ function registerIpc() {
       lastPanelAnchor = null;
       store.settings.anchor = lastAnchor;
       store.settings.panelAnchor = null;
+      bubbleDockedEdge = null;
       bubbleWin?.setBounds(collapsedBounds(), false);
       if (expanded && win) win.setBounds(expandedBounds(), false);
+      publishBubbleEdge();
     }
 
     saveStore();
     broadcast();
+    publishBubbleEdge();
     debugLog('settings:update end');
     return getSnapshot();
   });
@@ -2251,14 +2391,36 @@ function registerIpc() {
     store.settings.anchor = lastAnchor;
     store.settings.panelAnchor = null;
     saveStore();
+    bubbleDockedEdge = null;
     if (bubbleWin) bubbleWin.setBounds(collapsedBounds(), false);
     if (expanded && win) win.setBounds(expandedBounds(), false);
+    publishBubbleEdge();
     return true;
+  });
+
+  ipcMain.handle('bubble:get-edge', () => ({
+    edge: logicalBubbleEdge(),
+    docked: Boolean(bubbleDockedEdge)
+  }));
+
+  ipcMain.handle('bubble:dock', (event) => {
+    if (!bubbleWin || event.sender !== bubbleWin.webContents) return { edge: null, docked: false };
+    return dockBubbleWindow();
+  });
+
+  ipcMain.handle('bubble:undock', (event) => {
+    if (!bubbleWin || event.sender !== bubbleWin.webContents) return { edge: null, docked: false };
+    return undockBubbleWindow();
   });
 
   ipcMain.on('window:drag-start', (event) => {
     const target = win && event.sender === win.webContents ? win : bubbleWin;
     if (!target || target.isDestroyed()) return;
+    // 贴边细条不能直接拖：先还原成完整气泡，再沿用原来的拖动计算。
+    if (target === bubbleWin && bubbleDockedEdge) {
+      bubbleDockedEdge = null;
+      target.setBounds(collapsedBounds(), false);
+    }
     dragState = {
       target,
       isPanel: target === win,
@@ -2310,10 +2472,16 @@ function registerIpc() {
         );
         store.settings.panelAnchor = lastPanelAnchor;
       } else {
-        lastAnchor = clampAnchor({ x: bounds.x, y: bounds.y });
+        lastAnchor = anchorFromDraggedBubble(bounds);
+        bubbleDockedEdge = null;
         store.settings.anchor = lastAnchor;
+        const full = collapsedBounds();
+        if (bounds.width !== full.width || bounds.height !== full.height) {
+          target.setBounds(full, false);
+        }
       }
       saveStore();
+      if (!isPanel) publishBubbleEdge();
     } catch (error) {
       safeError('Window drag save failed:', error.message);
     }
@@ -2345,6 +2513,13 @@ if (!gotLock) {
     updateUiMetrics();
     registerIpc();
     createWindow();
+    screen.on('display-metrics-changed', () => {
+      try {
+        relayoutDockedBubble();
+      } catch (error) {
+        safeError('display change failed:', error.message);
+      }
+    });
     createTray();
     registerShortcuts();
     reminderTimer = setInterval(checkReminders, 30000);
