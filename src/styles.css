@@ -696,18 +696,22 @@ html[data-view="bubble"] .bubble.is-docked.has-overdue.dock-top .bubble-strip {
 .weekdays {
   display: grid;
   grid-template-columns: repeat(7, 1fr);
-  gap: 4px;
-  padding: 0 2px;
+  gap: 3px;
+  padding: 0 4px;
   flex: 0 0 16px;
   color: var(--muted);
   font-size: 10px;
   font-weight: 600;
-  text-align: center;
+  text-align: left;
+}
+
+.weekdays span {
+  padding-left: 4px;
 }
 
 .weekdays span:nth-child(6),
 .weekdays span:nth-child(7) {
-  color: color-mix(in srgb, var(--rose) 76%, var(--muted));
+  color: var(--muted);
 }
 
 .calendar {
@@ -749,7 +753,7 @@ html[data-view="bubble"] .bubble.is-docked.has-overdue.dock-top .bubble-strip {
 }
 
 .day.is-weekend .day-num {
-  color: color-mix(in srgb, var(--rose) 72%, var(--text));
+  color: var(--muted);
 }
 
 .day.is-today {
