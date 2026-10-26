@@ -714,10 +714,10 @@ html[data-view="bubble"] .bubble.is-docked.has-overdue.dock-top .bubble-strip {
   display: grid;
   grid-template-columns: repeat(7, 1fr);
   grid-template-rows: repeat(6, 1fr);
-  gap: 4px;
-  height: 286px;
-  flex: 0 0 286px;
-  padding: 5px;
+  gap: 3px;
+  height: 240px;
+  flex: 0 0 240px;
+  padding: 4px;
   border: 1px solid var(--line);
   border-radius: 13px;
   background: rgba(255, 255, 255, 0.018);
@@ -728,9 +728,9 @@ html[data-view="bubble"] .bubble.is-docked.has-overdue.dock-top .bubble-strip {
   display: flex;
   flex-direction: column;
   align-items: stretch;
-  gap: 2px;
+  gap: 1px;
   min-width: 0;
-  padding: 4px;
+  padding: 3px;
   border: 1px solid transparent;
   border-radius: 8px;
   background: transparent;
@@ -786,20 +786,21 @@ html[data-view="bubble"] .bubble.is-docked.has-overdue.dock-top .bubble-strip {
   font-weight: 800;
 }
 
-.task-bar {
+.task-dot {
   display: block;
-  height: 3px;
-  border-radius: 2px;
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
   background: var(--bar-color, var(--blue));
-  opacity: 0.9;
-  flex: 1 1 auto;
-  min-width: 0;
+  box-shadow: 0 0 0 1px color-mix(in srgb, var(--bar-color, var(--blue)) 22%, transparent);
+  opacity: 0.95;
+  flex: 0 0 6px;
 }
 
 .day-meta {
   display: flex;
   align-items: center;
-  gap: 4px;
+  gap: 3px;
   margin-top: auto;
   min-width: 0;
 }

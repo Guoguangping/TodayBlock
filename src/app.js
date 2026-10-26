@@ -395,12 +395,12 @@ function renderCalendar() {
     const lead = pending.reduce((current, task) => (
       !current || (task.priority || 0) > (current.priority || 0) ? task : current
     ), null);
-    const bar = pending.length
-      ? `<span class="task-bar" style="--bar-color:${safeColor(taskColor(lead))}"></span>`
+    const dot = pending.length
+      ? `<span class="task-dot" style="--bar-color:${safeColor(taskColor(lead))}"></span>`
       : '';
     const count = pending.length > 9 ? '9+' : String(pending.length);
     const pendingMark = pending.length
-      ? `<span class="day-meta">${bar}<span class="day-count-badge">${count}</span></span>`
+      ? `<span class="day-meta">${dot}<span class="day-count-badge">${count}</span></span>`
       : '';
     const completeMark = allDone
       ? `<span class="day-check" aria-hidden="true">${ICON.check}</span>`
